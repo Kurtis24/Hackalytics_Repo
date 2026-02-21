@@ -6,8 +6,11 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = True
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 9000
     allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:5173"]
+    # How many calendar days ahead to scan for upcoming regular-season games.
+    # 60 days covers the full tail of any major league's regular season from any point.
+    days_ahead: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -4,6 +4,8 @@ Sportsbook API and writes Parquet files partitioned by sport/season.
 """
 
 from __future__ import annotations
+from Backend.app.services.sportsbook_client import SportsbookAPIClient
+from Backend.app.config import settings
 import asyncio
 from datetime import datetime, timezone
 import json
@@ -13,8 +15,6 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from Backend.app.config import settings
-from Backend.app.services.sportsbook_client import SportsbookAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +38,7 @@ class DataCollectionPipeline:
         self,
         client: SportsbookAPIClient,
         output_dir: str = "data/raw",
+
     ) -> None:
         self._client = client
         self._output_dir = Path(output_dir)

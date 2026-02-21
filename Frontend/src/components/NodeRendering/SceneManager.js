@@ -125,10 +125,10 @@ export class SceneManager {
       transparent: true,
     });
 
-    // Axis extents — match NodeRenderer scale (CONF/RISK: ±1000, profit: 80/%)
-    const X_MIN = -1100, X_MAX = 1100;  // confidence axis
-    const Y_MIN = -400,  Y_MAX = 800;   // profit axis  (≈ -5% to +10%)
-    const Z_MIN = -1100, Z_MAX = 1100;  // risk axis
+    // Axis extents — match NodeRenderer scale (CONF/RISK: ±500, profit: 40/%)
+    const X_MIN = -550, X_MAX = 550;   // confidence axis
+    const Y_MIN = -250, Y_MAX = 400;   // profit axis  (≈ -6% to +10%)
+    const Z_MIN = -550, Z_MAX = 550;   // risk axis
 
     const axes = [
       [new THREE.Vector3(X_MIN, 0, 0), new THREE.Vector3(X_MAX, 0, 0)],

@@ -199,17 +199,26 @@ export default function NodeRender() {
         <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8, paddingTop: 8 }}>
           <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Color</div>
           {[
-            { swatch: 'linear-gradient(to right,#2d3561,#4ecdc4,#39ff14)', label: 'Profit: low → high' },
-            { swatch: '#ff3333', label: '● Live' },
-          ].map(({ swatch, label: l }) => (
+            { color: '#ff7043', label: 'Baseball' },
+            { color: '#42a5f5', label: 'Football' },
+            { color: '#ffca28', label: 'Basketball' },
+            { color: '#26c6da', label: 'Hockey' },
+          ].map(({ color, label: l }) => (
             <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
               <span style={{
-                display: 'inline-block', width: swatch.startsWith('linear') ? 40 : 10,
-                height: 10, background: swatch, borderRadius: 3, flexShrink: 0,
+                display: 'inline-block', width: 10, height: 10,
+                background: color, borderRadius: '50%', flexShrink: 0,
               }} />
               {l}
             </div>
           ))}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span style={{
+              display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+              border: '1.5px solid #ffffff', flexShrink: 0,
+            }} />
+            Live
+          </div>
           <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
             Size = volume · Hover to inspect · Click to focus
           </div>

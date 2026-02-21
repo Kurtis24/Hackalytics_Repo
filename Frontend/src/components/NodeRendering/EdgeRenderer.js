@@ -34,17 +34,9 @@ export class EdgeRenderer {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(posBuffer, 3));
 
-    // LineDashedMaterial requires computeLineDistances() to work
-    const material = new THREE.LineDashedMaterial({
-      color:       0x888888,
-      dashSize:    12,
-      gapSize:     20,
-      opacity:     0.35,
-      transparent: true,
-    });
+    const material = new THREE.LineBasicMaterial({ color: 0x2a2a3a });
 
     this._mesh = new THREE.LineSegments(geometry, material);
-    this._mesh.computeLineDistances(); // required for dashing
     this._mesh.renderOrder = -1;
     this.scene.add(this._mesh);
   }

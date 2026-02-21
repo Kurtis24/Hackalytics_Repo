@@ -56,10 +56,10 @@ function pickSport(rng) { return SPORTS[Math.floor(rng() * 4)]; }
 // confidence is tighter (human events are uncertain)
 const PARAMS = {
   //              conf range         profit range       risk range         volume ($)
-  baseball:   { cL:0.40, cH:0.82,  pL:0.10, pH:5.5,  rL:0.35, rH:0.80,  vL:500,  vH:30000 },
-  football:   { cL:0.38, cH:0.85,  pL:0.15, pH:7.0,  rL:0.30, rH:0.82,  vL:800,  vH:50000 },
-  basketball: { cL:0.42, cH:0.88,  pL:0.10, pH:5.0,  rL:0.28, rH:0.75,  vL:600,  vH:40000 },
-  hockey:     { cL:0.35, cH:0.80,  pL:0.20, pH:6.5,  rL:0.38, rH:0.85,  vL:400,  vH:25000 },
+  baseball:   { cL:0.40, cH:0.82,  pL:0.10, pH:5.5,  rL:0.35, rH:0.80,  vL:5000,  vH:200000 },
+  football:   { cL:0.38, cH:0.85,  pL:0.15, pH:7.0,  rL:0.30, rH:0.82,  vL:8000,  vH:500000 },
+  basketball: { cL:0.42, cH:0.88,  pL:0.10, pH:5.0,  rL:0.28, rH:0.75,  vL:6000,  vH:350000 },
+  hockey:     { cL:0.35, cH:0.80,  pL:0.20, pH:6.5,  rL:0.38, rH:0.85,  vL:3000,  vH:150000 },
 };
 
 function buildNode(i, rng) {
@@ -83,6 +83,7 @@ function buildNode(i, rng) {
 
   return {
     node_id: `${TYPE_PREFIX[sport]}_${matchup}_${exch.replace(/\s/g,'')}_${i}`,
+    sport,
     live,
     metrics: { confidence, profit, risk, volume },
   };

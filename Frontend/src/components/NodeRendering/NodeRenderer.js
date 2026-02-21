@@ -1,14 +1,17 @@
 import * as THREE from 'three';
 
 // ─── Axis → world-space mapping ───────────────────────────────────────────────
-// confidence ∈ [0, 1]  → X  ∈ [-1000, 1000]
-// profit (%)           → Y  (80 world-units per %)
-// risk       ∈ [0, 1]  → Z  ∈ [-1000, 1000]
-const CONF_SCALE  = 2000;   // world units across full confidence range
-const CONF_OFFSET = -1000;  // confidence=0 starts here
-const PROFIT_SCALE = 80;    // world units per % profit
-const RISK_SCALE  = 2000;
-const RISK_OFFSET = -1000;
+// confidence ∈ [0, 1]  → X  ∈ [-500, 500]
+// profit (%)           → Y  (40 world-units per %)
+// risk       ∈ [0, 1]  → Z  ∈ [-500, 500]
+const CONF_SCALE  = 1000;   // world units across full confidence range
+const CONF_OFFSET = -500;   // confidence=0 starts here
+const PROFIT_SCALE = 40;    // world units per % profit
+const RISK_SCALE  = 1000;
+const RISK_OFFSET = -500;
+
+// ─── Sport index ──────────────────────────────────────────────────────────────
+const SPORT_INDEX = { baseball: 0, football: 1, basketball: 2, hockey: 3 };
 
 // ─── NodeRenderer ─────────────────────────────────────────────────────────────
 export class NodeRenderer {
@@ -28,6 +31,7 @@ export class NodeRenderer {
     this.scales      = null; // Float32Array  [scale per node]
     this.profit      = null; // Float32Array  [profit_percent per node]
     this.confidence  = null; // Float32Array  [0-1 per node]
+    this.sports      = null; // Uint8Array    [sport index 0-3 per node]
     this.risk        = null; // Float32Array  [0-1 per node]
     this.live        = null; // Uint8Array    [0/1 per node]
     this.nodeIds     = [];   // string[]
@@ -51,6 +55,10 @@ export class NodeRenderer {
     // ── Search result glow mesh ───────────────────────────────────────────
     this._searchResultMesh     = null;
     this._searchResultMaxCount = 0;
+
+    // ── Live ring mesh (horizontal torus around each live node) ───────────
+    this._liveRingMesh     = null;
+    this._liveRingGeometry = null;
 
     // ── Adjacency map ─────────────────────────────────────────────────────
     this._adjacency = new Map(); // nodeId → Set<nodeId>
@@ -77,6 +85,7 @@ export class NodeRenderer {
   initialize(nodes) {
     this._clearNodeMesh();
     this._clearSearchMesh();
+    this._clearLiveRings();
     this._nodeIndexMap.clear();
     this._liveIndices = [];
     this._hoveredIndex = -1;
@@ -91,6 +100,7 @@ export class NodeRenderer {
     this.confidence = new Float32Array(n);
     this.risk       = new Float32Array(n);
     this.live       = new Uint8Array(n);
+    this.sports     = new Uint8Array(n);
     this.nodeIds    = new Array(n);
 
     // ── Pass 1: fill flat buffers & build indices ─────────────────────────
@@ -104,13 +114,14 @@ export class NodeRenderer {
       const conf   = Math.min(0.99, Math.max(0, m.confidence ?? 0.5));
       const prof   = m.profit    ?? 0;
       const rsk    = Math.min(0.99, Math.max(0, m.risk       ?? 0.5));
-      const vol    = m.volume    ?? 10000;
+      const vol    = m.volume    ?? 50000;
       const isLive = !!node.live;
 
       this.confidence[i] = conf;
       this.profit[i]     = prof;
       this.risk[i]       = rsk;
       this.live[i]       = isLive ? 1 : 0;
+      this.sports[i]     = SPORT_INDEX[node.sport] ?? 0;
 
       // Position on 3D axes
       this.positions[i * 3]     = conf * CONF_SCALE  + CONF_OFFSET;
@@ -118,7 +129,8 @@ export class NodeRenderer {
       this.positions[i * 3 + 2] = rsk  * RISK_SCALE  + RISK_OFFSET;
 
       // Scale from volume — sqrt gives dramatic size spread across the data range
-      this.scales[i] = 0.15 + Math.pow(vol / 50000, 0.5) * 2.8;
+      // vol range: ~2 000 – 500 000  →  scale range: ~1.2 – 7
+      this.scales[i] = 1 + Math.pow(vol / 500000, 0.5) * 6;
 
       if (isLive) this._liveIndices.push(i);
     }
@@ -143,8 +155,9 @@ export class NodeRenderer {
     this._nodeMesh.instanceColor.needsUpdate  = true;
     this.scene.add(this._nodeMesh);
 
-    // Build search mesh now that n is known
+    // Build search mesh and live rings now that n is known
     this._buildSearchMesh(n);
+    this._buildLiveRings();
   }
 
   /**
@@ -164,7 +177,7 @@ export class NodeRenderer {
     this.profit[i]     = prof;
     this.risk[i]       = rsk;
     this.live[i]       = node.live ? 1 : 0;
-    this.scales[i]     = 0.15 + Math.pow(vol / 50000, 0.5) * 2.8;
+    this.scales[i]     = 1 + Math.pow(vol / 500000, 0.5) * 6;
 
     this.positions[i * 3]     = conf * CONF_SCALE  + CONF_OFFSET;
     this.positions[i * 3 + 1] = prof * PROFIT_SCALE;
@@ -376,6 +389,7 @@ export class NodeRenderer {
   dispose() {
     this._clearNodeMesh();
     this._clearSearchMesh();
+    this._clearLiveRings();
     if (this._highlightMesh)     { this.scene.remove(this._highlightMesh);     this._highlightMesh.material.dispose(); }
     if (this._focusCenterMesh)   { this.scene.remove(this._focusCenterMesh);   this._focusCenterMesh.material.dispose(); }
     if (this._focusNeighborMesh) { this.scene.remove(this._focusNeighborMesh); this._focusNeighborMesh.material.dispose(); }
@@ -385,26 +399,19 @@ export class NodeRenderer {
   // ── Private ──────────────────────────────────────────────────────────────────
 
   /**
-   * Color scheme:
-   *   live → bright red
-   *   profit ≥ 3% → neon green
-   *   profit 0–3% → teal → green lerp
-   *   profit < 0  → dark blue → teal lerp
+   * Color scheme (sport-based — live nodes use sport color + ring overlay):
+   *   baseball   → deep orange  #ff7043
+   *   football   → sky blue     #42a5f5
+   *   basketball → amber        #ffca28
+   *   hockey     → ice cyan     #26c6da
    */
   _getNodeColor(i, out) {
-    if (this.live[i]) { out.setHex(0xff3333); return; }
-    const p = this.profit[i];
-    if (p >= 3) {
-      out.setHex(0x39ff14);
-    } else if (p >= 0) {
-      this._colorA.setHex(0x4ecdc4);
-      this._colorB.setHex(0x39ff14);
-      out.lerpColors(this._colorA, this._colorB, p / 3);
-    } else {
-      const t = Math.max(0, (p + 5) / 5); // -5% → 0, 0% → 1
-      this._colorA.setHex(0x2d3561);
-      this._colorB.setHex(0x4ecdc4);
-      out.lerpColors(this._colorA, this._colorB, t);
+    switch (this.sports[i]) {
+      case 0: out.setHex(0xff7043); break; // baseball   — deep orange
+      case 1: out.setHex(0x42a5f5); break; // football   — sky blue
+      case 2: out.setHex(0xffca28); break; // basketball — amber
+      case 3: out.setHex(0x26c6da); break; // hockey     — ice cyan
+      default: out.setHex(0xffffff);
     }
   }
 
@@ -493,6 +500,46 @@ export class NodeRenderer {
       this._searchResultMesh.material.dispose();
       this._searchResultMesh     = null;
       this._searchResultMaxCount = 0;
+    }
+  }
+
+  /**
+   * Build a horizontal torus ring (XZ plane) around every live node.
+   * Ring lies flat so it reads clearly as a halo from the default camera angle.
+   */
+  _buildLiveRings() {
+    const liveCount = this._liveIndices.length;
+    if (!liveCount) return;
+
+    // Shared torus geometry — radius 1 (scaled per-instance), thin tube
+    this._liveRingGeometry = new THREE.TorusGeometry(1, 0.045, 6, 48);
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+
+    this._liveRingMesh = new THREE.InstancedMesh(this._liveRingGeometry, mat, liveCount);
+
+    for (let j = 0; j < liveCount; j++) {
+      const i = this._liveIndices[j];
+      const s = this.scales[i] * 1.5;
+      this._dummy.position.copy(this._nodePosition(i));
+      this._dummy.scale.set(s, s, s);
+      // Rotate 90° around X to lay the torus flat in the XZ plane (horizontal halo)
+      this._dummy.rotation.set(Math.PI / 2, 0, 0);
+      this._dummy.updateMatrix();
+      this._liveRingMesh.setMatrixAt(j, this._dummy.matrix);
+    }
+    this._liveRingMesh.instanceMatrix.needsUpdate = true;
+    this.scene.add(this._liveRingMesh);
+  }
+
+  _clearLiveRings() {
+    if (this._liveRingMesh) {
+      this.scene.remove(this._liveRingMesh);
+      this._liveRingMesh.material.dispose();
+      this._liveRingMesh = null;
+    }
+    if (this._liveRingGeometry) {
+      this._liveRingGeometry.dispose();
+      this._liveRingGeometry = null;
     }
   }
 

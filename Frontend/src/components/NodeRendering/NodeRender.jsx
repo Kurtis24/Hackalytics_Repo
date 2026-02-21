@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SceneManager } from './SceneManager.js';
-import mockNodes from '../../data/mockNodes.js';
+import { useData } from '../../context/DataContext.jsx';
 import { adaptNodesForScene, generateConnections } from '../../utils/dataAdapter.js';
 
-export default function NodeRender() {
+export default function NodeRender({ onNodeSelect }) {
   const canvasRef  = useRef(null);
   const managerRef = useRef(null);
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
+  const { getNodes, dataMode } = useData();
 
   // ── Search state ────────────────────────────────────────────────────────────
   const [searchText, setSearchText] = useState('');
@@ -32,15 +33,17 @@ export default function NodeRender() {
   // ── UI toggle state ─────────────────────────────────────────────────────────
   const [showSearch, setShowSearch] = useState(true);
   const [showLegend, setShowLegend] = useState(true);
+  const [activePreset, setActivePreset] = useState(null);
 
   // ── Scene setup ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     try {
-      const manager     = new SceneManager(canvas);
+      const manager     = new SceneManager(canvas, onNodeSelect);
       managerRef.current = manager;
-      const nodes       = adaptNodesForScene(mockNodes);
+      const sourceData  = getNodes();
+      const nodes       = adaptNodesForScene(sourceData);
       const connections = generateConnections(nodes);
       manager.loadNodes(nodes, connections);
       manager.start();
@@ -50,7 +53,21 @@ export default function NodeRender() {
       setError(err.message ?? String(err));
     }
     return () => { managerRef.current?.dispose(); managerRef.current = null; };
-  }, []);
+  }, [getNodes, onNodeSelect]);
+
+  // ── Reload scene when data changes ──────────────────────────────────────────
+  useEffect(() => {
+    if (!ready || !managerRef.current) return;
+    try {
+      const sourceData  = getNodes();
+      const nodes       = adaptNodesForScene(sourceData);
+      const connections = generateConnections(nodes);
+      managerRef.current.loadNodes(nodes, connections);
+    } catch (err) {
+      console.error('[NodeRender] reload error:', err);
+      setError(err.message ?? String(err));
+    }
+  }, [dataMode, ready, getNodes]);
 
   // ── Search handlers ─────────────────────────────────────────────────────────
   const handleSearch = useCallback(() => {
@@ -95,6 +112,7 @@ export default function NodeRender() {
     setSport('');     setHomeTeam('');
     setAwayTeam('');  setMarketType('');
     setSportsbook(''); setDateFrom(''); setDateTo('');
+    setActivePreset(null);
   }, []);
 
   const onKeyDown = useCallback((e) => {
@@ -103,7 +121,14 @@ export default function NodeRender() {
 
   // ── Preset filters ──────────────────────────────────────────────────────────
   const applyPreset = useCallback((preset) => {
+    if (activePreset === preset) {
+      handleClear();
+      setActivePreset(null);
+      return;
+    }
+    
     handleClear();
+    setActivePreset(preset);
     
     setTimeout(() => {
       const manager = managerRef.current;
@@ -139,22 +164,37 @@ export default function NodeRender() {
       const count = manager.applySearch(indices);
       setResultInfo({ count });
     }, 50);
-  }, [handleClear]);
+  }, [handleClear, activePreset]);
 
   // ── Styles ──────────────────────────────────────────────────────────────────
+  const PF = { fontFamily: "'Playfair Display', Georgia, serif" };
+  
   const inputStyle = {
     background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: 4, color: '#e8e8f0', fontSize: 11, fontFamily: 'monospace',
+    borderRadius: 4, color: '#e8e8f0', fontSize: 11, ...PF,
     padding: '4px 7px', outline: 'none', width: '100%', boxSizing: 'border-box',
   };
+  
+  const selectStyle = {
+    ...inputStyle,
+    cursor: 'pointer',
+    backgroundImage: 'linear-gradient(45deg, transparent 50%, #e8e8f0 50%), linear-gradient(135deg, #e8e8f0 50%, transparent 50%)',
+    backgroundPosition: 'calc(100% - 12px) calc(1em - 2px), calc(100% - 7px) calc(1em - 2px)',
+    backgroundSize: '5px 5px, 5px 5px',
+    backgroundRepeat: 'no-repeat',
+    paddingRight: '24px',
+    appearance: 'none',
+    WebkitAppearance: 'none',
+    MozAppearance: 'none',
+  };
   const halfInput = { ...inputStyle, width: '50%' };
-  const label     = { color: '#888', fontSize: 10, marginBottom: -2 };
+  const label     = { color: '#888', fontSize: 10, marginBottom: -2, ...PF };
 
   const btn = (primary) => ({
     background:   primary ? 'rgba(57,255,20,0.15)' : 'rgba(255,255,255,0.05)',
     border:       primary ? '1px solid rgba(57,255,20,0.40)' : '1px solid rgba(255,255,255,0.10)',
     borderRadius: 4, color: primary ? '#39ff14' : '#999',
-    fontSize: 11, fontFamily: 'monospace', padding: '5px 0', cursor: 'pointer', flex: 1,
+    fontSize: 11, ...PF, padding: '5px 0', cursor: 'pointer', flex: 1,
   });
 
   return (
@@ -174,6 +214,16 @@ export default function NodeRender() {
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
           background: rgba(255,255,255,0.25);
         }
+        
+        select option {
+          background: #1a1a2e;
+          color: #e8e8f0;
+          padding: 8px;
+        }
+        
+        select option:hover {
+          background: #2a2a3e;
+        }
       `}</style>
 
       {/* Error overlay */}
@@ -181,7 +231,7 @@ export default function NodeRender() {
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
           justifyContent: 'center', background: '#0a0a14', color: '#ff6b6b',
-          fontFamily: 'monospace', fontSize: 13, padding: 32, zIndex: 10,
+          ...PF, fontSize: 13, padding: 32, zIndex: 10,
           whiteSpace: 'pre-wrap', textAlign: 'center',
         }}>
           ⚠ NodeRender error:{'\n'}{error}
@@ -196,7 +246,7 @@ export default function NodeRender() {
         <div style={{
           position: 'absolute', top: 16, right: 16, width: 230, maxHeight: 'calc(100vh - 32px)',
           background: 'rgba(8,8,20,0.90)', border: '1px solid rgba(255,255,255,0.10)',
-          borderRadius: 8, fontFamily: 'monospace', fontSize: 11,
+          borderRadius: 8, ...PF, fontSize: 11,
           color: '#ccc', zIndex: 10, display: 'flex', flexDirection: 'column',
           boxSizing: 'border-box',
         }}>
@@ -214,7 +264,7 @@ export default function NodeRender() {
                 borderRadius: 4,
                 color: '#999',
                 fontSize: 10,
-                fontFamily: 'monospace',
+                ...PF,
                 padding: '4px 8px',
                 cursor: 'pointer',
                 pointerEvents: 'auto',
@@ -238,20 +288,21 @@ export default function NodeRender() {
             >
 
           {/* Preset tabs */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
             <button
               onClick={() => applyPreset('high-risk')}
               style={{
                 flex: 1,
-                background: 'rgba(255,107,107,0.15)',
-                border: '1px solid rgba(255,107,107,0.40)',
-                borderRadius: 4,
-                color: '#ff6b6b',
+                background: activePreset === 'high-risk' ? 'rgba(255,107,107,0.30)' : 'rgba(255,107,107,0.10)',
+                border: activePreset === 'high-risk' ? '2px solid rgba(255,107,107,0.70)' : '1px solid rgba(255,107,107,0.30)',
+                borderRadius: 6,
+                color: activePreset === 'high-risk' ? '#ff6b6b' : '#ff9999',
                 fontSize: 10,
-                fontFamily: 'monospace',
-                padding: '6px 4px',
+                ...PF,
+                padding: '8px 4px',
                 cursor: 'pointer',
-                fontWeight: 'bold',
+                fontWeight: activePreset === 'high-risk' ? 'bold' : 'normal',
+                transition: 'all 0.2s ease',
               }}
             >
               High Risk
@@ -260,15 +311,16 @@ export default function NodeRender() {
               onClick={() => applyPreset('safe')}
               style={{
                 flex: 1,
-                background: 'rgba(57,255,20,0.15)',
-                border: '1px solid rgba(57,255,20,0.40)',
-                borderRadius: 4,
-                color: '#39ff14',
+                background: activePreset === 'safe' ? 'rgba(57,255,20,0.30)' : 'rgba(57,255,20,0.10)',
+                border: activePreset === 'safe' ? '2px solid rgba(57,255,20,0.70)' : '1px solid rgba(57,255,20,0.30)',
+                borderRadius: 6,
+                color: activePreset === 'safe' ? '#39ff14' : '#7fff7f',
                 fontSize: 10,
-                fontFamily: 'monospace',
-                padding: '6px 4px',
+                ...PF,
+                padding: '8px 4px',
                 cursor: 'pointer',
-                fontWeight: 'bold',
+                fontWeight: activePreset === 'safe' ? 'bold' : 'normal',
+                transition: 'all 0.2s ease',
               }}
             >
               Safe Bets
@@ -277,116 +329,118 @@ export default function NodeRender() {
               onClick={() => applyPreset('live')}
               style={{
                 flex: 1,
-                background: 'rgba(255,51,51,0.15)',
-                border: '1px solid rgba(255,51,51,0.40)',
-                borderRadius: 4,
-                color: '#ff3333',
+                background: activePreset === 'live' ? 'rgba(255,51,51,0.30)' : 'rgba(255,51,51,0.10)',
+                border: activePreset === 'live' ? '2px solid rgba(255,51,51,0.70)' : '1px solid rgba(255,51,51,0.30)',
+                borderRadius: 6,
+                color: activePreset === 'live' ? '#ff3333' : '#ff8888',
                 fontSize: 10,
-                fontFamily: 'monospace',
-                padding: '6px 4px',
+                ...PF,
+                padding: '8px 4px',
                 cursor: 'pointer',
-                fontWeight: 'bold',
+                fontWeight: activePreset === 'live' ? 'bold' : 'normal',
+                transition: 'all 0.2s ease',
               }}
             >
               Live Now
             </button>
           </div>
 
-          {/* Text */}
-          <input style={inputStyle} placeholder="node ID substring…"
-            value={searchText} onChange={e => setSearchText(e.target.value)} onKeyDown={onKeyDown} />
-
-          {/* Live toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer' }}>
-            <input type="checkbox" checked={liveOnly}
-              onChange={e => setLiveOnly(e.target.checked)}
-              style={{ accentColor: '#ff3333', cursor: 'pointer' }} />
-            <span style={{ color: liveOnly ? '#ff3333' : '#aaa' }}>Live only</span>
-          </label>
+          {/* Quick Filters Section */}
+          <div style={{
+            borderTop: '1px solid rgba(255,255,255,0.10)',
+            paddingTop: 8,
+            marginBottom: 4,
+          }}>
+            <div style={{ color: '#fff', fontSize: 11, fontWeight: 'bold', marginBottom: 6 }}>
+              Quick Filters
+            </div>
+          </div>
 
           {/* Sport */}
-          <div style={label}>Sport</div>
-          <select style={inputStyle} value={sport} onChange={e => setSport(e.target.value)}>
-            <option value="">All sports</option>
+          <select style={selectStyle} value={sport} onChange={e => setSport(e.target.value)}>
+            <option value="">All Sports</option>
             <option value="baseball">Baseball</option>
             <option value="football">Football</option>
             <option value="basketball">Basketball</option>
             <option value="hockey">Hockey</option>
           </select>
 
-          {/* Home Team */}
-          <div style={label}>Home Team</div>
-          <input style={inputStyle} placeholder="team name…"
-            value={homeTeam} onChange={e => setHomeTeam(e.target.value)} onKeyDown={onKeyDown} />
+          {/* Team Search */}
+          <input style={inputStyle} placeholder="Search teams…"
+            value={homeTeam} onChange={e => { setHomeTeam(e.target.value); setAwayTeam(e.target.value); }} onKeyDown={onKeyDown} />
 
-          {/* Away Team */}
-          <div style={label}>Away Team</div>
-          <input style={inputStyle} placeholder="team name…"
-            value={awayTeam} onChange={e => setAwayTeam(e.target.value)} onKeyDown={onKeyDown} />
-
-          {/* Market Type */}
-          <div style={label}>Market Type</div>
-          <select style={inputStyle} value={marketType} onChange={e => setMarketType(e.target.value)}>
-            <option value="">All types</option>
-            <option value="spread">Spread</option>
-            <option value="moneyline">Moneyline</option>
-            <option value="over/under">Over/Under</option>
-          </select>
-
-          {/* Sportsbook */}
-          <div style={label}>Sportsbook</div>
-          <input style={inputStyle} placeholder="sportsbook name…"
-            value={sportsbook} onChange={e => setSportsbook(e.target.value)} onKeyDown={onKeyDown} />
-
-          {/* Profit */}
-          <div style={label}>Profit %</div>
+          {/* Profit Range */}
           <div style={{ display: 'flex', gap: 6 }}>
-            <input style={halfInput} type="number" placeholder="min"
+            <input style={halfInput} type="number" placeholder="Min Profit %"
               value={minProfit} onChange={e => setMinProfit(e.target.value)} onKeyDown={onKeyDown} />
-            <input style={halfInput} type="number" placeholder="max"
+            <input style={halfInput} type="number" placeholder="Max Profit %"
               value={maxProfit} onChange={e => setMaxProfit(e.target.value)} onKeyDown={onKeyDown} />
           </div>
 
-          {/* Confidence */}
-          <div style={label}>Confidence [0–1]</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input style={halfInput} type="number" step="0.01" placeholder="min"
-              value={minConf} onChange={e => setMinConf(e.target.value)} onKeyDown={onKeyDown} />
-            <input style={halfInput} type="number" step="0.01" placeholder="max"
-              value={maxConf} onChange={e => setMaxConf(e.target.value)} onKeyDown={onKeyDown} />
-          </div>
+          {/* Advanced Filters Toggle */}
+          <details style={{ marginTop: 4 }}>
+            <summary style={{
+              color: '#888',
+              fontSize: 10,
+              cursor: 'pointer',
+              userSelect: 'none',
+              padding: '4px 0',
+              ...PF,
+            }}>
+              Advanced Filters
+            </summary>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginTop: 7 }}>
+              {/* Market Type */}
+              <select style={selectStyle} value={marketType} onChange={e => setMarketType(e.target.value)}>
+                <option value="">All Market Types</option>
+                <option value="spread">Spread</option>
+                <option value="moneyline">Moneyline</option>
+                <option value="over/under">Over/Under</option>
+              </select>
 
-          {/* Risk */}
-          <div style={label}>Risk [0–1]</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input style={halfInput} type="number" step="0.01" placeholder="min"
-              value={minRisk} onChange={e => setMinRisk(e.target.value)} onKeyDown={onKeyDown} />
-            <input style={halfInput} type="number" step="0.01" placeholder="max"
-              value={maxRisk} onChange={e => setMaxRisk(e.target.value)} onKeyDown={onKeyDown} />
-          </div>
+              {/* Confidence */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={halfInput} type="number" step="0.01" placeholder="Min Conf"
+                  value={minConf} onChange={e => setMinConf(e.target.value)} onKeyDown={onKeyDown} />
+                <input style={halfInput} type="number" step="0.01" placeholder="Max Conf"
+                  value={maxConf} onChange={e => setMaxConf(e.target.value)} onKeyDown={onKeyDown} />
+              </div>
 
-          {/* Volume */}
-          <div style={label}>Volume ($)</div>
-          <div style={{ display: 'flex', gap: 6 }}>
-            <input style={halfInput} type="number" placeholder="min"
-              value={minVolume} onChange={e => setMinVolume(e.target.value)} onKeyDown={onKeyDown} />
-            <input style={halfInput} type="number" placeholder="max"
-              value={maxVolume} onChange={e => setMaxVolume(e.target.value)} onKeyDown={onKeyDown} />
-          </div>
+              {/* Risk */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={halfInput} type="number" step="0.01" placeholder="Min Risk"
+                  value={minRisk} onChange={e => setMinRisk(e.target.value)} onKeyDown={onKeyDown} />
+                <input style={halfInput} type="number" step="0.01" placeholder="Max Risk"
+                  value={maxRisk} onChange={e => setMaxRisk(e.target.value)} onKeyDown={onKeyDown} />
+              </div>
 
-          {/* Date Range */}
-          <div style={label}>Date Range</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            <input style={inputStyle} type="date"
-              value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
-            <input style={inputStyle} type="date"
-              value={dateTo} onChange={e => setDateTo(e.target.value)} />
-          </div>
+              {/* Volume */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input style={halfInput} type="number" placeholder="Min Vol $"
+                  value={minVolume} onChange={e => setMinVolume(e.target.value)} onKeyDown={onKeyDown} />
+                <input style={halfInput} type="number" placeholder="Max Vol $"
+                  value={maxVolume} onChange={e => setMaxVolume(e.target.value)} onKeyDown={onKeyDown} />
+              </div>
+
+              {/* Sportsbook */}
+              <input style={inputStyle} placeholder="Sportsbook name…"
+                value={sportsbook} onChange={e => setSportsbook(e.target.value)} onKeyDown={onKeyDown} />
+
+              {/* Date Range */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <input style={inputStyle} type="date" placeholder="From"
+                  value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+                <input style={inputStyle} type="date" placeholder="To"
+                  value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              </div>
+            </div>
+          </details>
 
           {/* Buttons */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button style={btn(true)}  onClick={handleSearch}>Search</button>
-            <button style={btn(false)} onClick={handleClear}>Clear</button>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button style={btn(true)}  onClick={handleSearch}>Apply</button>
+            <button style={btn(false)} onClick={handleClear}>Reset</button>
           </div>
 
           {/* Result count */}
@@ -440,7 +494,7 @@ export default function NodeRender() {
             borderRadius: 8,
             color: '#fff',
             fontSize: 12,
-            fontFamily: 'monospace',
+            ...PF,
             fontWeight: 'bold',
             padding: '10px 16px',
             cursor: 'pointer',
@@ -456,7 +510,7 @@ export default function NodeRender() {
         <div style={{
           position: 'absolute', top: 60, left: 16,
           background: 'rgba(8,8,20,0.82)', border: '1px solid rgba(255,255,255,0.10)',
-          borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', fontSize: 11,
+          borderRadius: 8, padding: '10px 14px', ...PF, fontSize: 11,
           color: '#ccc', lineHeight: 1.9, pointerEvents: 'none',
         }}>
           <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Axes</div>

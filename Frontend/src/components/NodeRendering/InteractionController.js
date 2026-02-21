@@ -7,12 +7,14 @@ export class InteractionController {
    * @param {import('./NodeRenderer').NodeRenderer}          nodeRenderer
    * @param {import('./CameraController').CameraController}  cameraController
    * @param {HTMLElement}                                    domElement
+   * @param {Function}                                       onNodeSelect
    */
-  constructor(camera, nodeRenderer, cameraController, domElement) {
+  constructor(camera, nodeRenderer, cameraController, domElement, onNodeSelect = null) {
     this.camera           = camera;
     this.nodeRenderer     = nodeRenderer;
     this.cameraController = cameraController;
     this.domElement       = domElement;
+    this.onNodeSelect     = onNodeSelect;
 
     this._raycaster     = new THREE.Raycaster();
     this._mouse         = new THREE.Vector2();
@@ -194,9 +196,15 @@ export class InteractionController {
       const nodeIndex = this._raycast();
       if (nodeIndex === null) {
         this.nodeRenderer.clearFocus();
+        if (this.onNodeSelect) {
+          this.onNodeSelect(null);
+        }
       } else {
-        const { nodeId } = this.nodeRenderer.getNodeData(nodeIndex);
-        this.nodeRenderer.focusNode(nodeId);
+        const nodeData = this.nodeRenderer.getNodeData(nodeIndex);
+        this.nodeRenderer.focusNode(nodeData.nodeId);
+        if (this.onNodeSelect) {
+          this.onNodeSelect(nodeData);
+        }
       }
     }
 

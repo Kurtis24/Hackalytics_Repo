@@ -140,11 +140,15 @@ export class NodeRenderer {
 
     // ── Pass 2: build single InstancedMesh with per-instance color ────────
     const mat = new THREE.MeshStandardMaterial({
-      color:     0xffffff, // white base so instance color is used directly
-      roughness: 0.75,
-      metalness: 0.10,
+      color:     0xffffff,
+      roughness: 0.4,
+      metalness: 0.3,
+      emissive:  0x000000,
+      emissiveIntensity: 0.2,
     });
     this._nodeMesh = new THREE.InstancedMesh(this._geometry, mat, n);
+    this._nodeMesh.castShadow = true;
+    this._nodeMesh.receiveShadow = true;
     this._nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     const color = new THREE.Color();

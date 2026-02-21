@@ -1,6 +1,6 @@
 // API endpoints for node management
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
 
 /**
  * Fetch all nodes from the backend
@@ -115,6 +115,23 @@ export async function deletePastNodes() {
     return await response.json();
   } catch (error) {
     console.error('Error deleting past nodes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch arbitrage opportunities from the backend
+ * Calls the ML model and arbitrage service to get real-time opportunities
+ */
+export async function fetchArbitrageOpportunities() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/arbitrage/opportunities`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch arbitrage opportunities: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching arbitrage opportunities:', error);
     throw error;
   }
 }

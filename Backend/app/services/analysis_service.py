@@ -69,7 +69,7 @@ def analyze(opportunities: list[ArbitrageOpportunity]) -> PortfolioAnalysis:
     confirmed_arbs = sum(1 for o in opportunities if o.profit_score > 0)
     value_bets     = len(opportunities) - confirmed_arbs
 
-    total_capital  = sum(o.total_stake       for o in opportunities)
+    total_capital  = sum(o.optimal_volume     for o in opportunities)
     total_profit   = sum(o.guaranteed_profit for o in opportunities)
 
     avg_profit_score = round(sum(o.profit_score for o in opportunities) / len(opportunities), 4)

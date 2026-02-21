@@ -46,16 +46,18 @@ export class NodeRenderer {
     scene.add(this._nodeGroup);
 
     // ── Flat buffers (allocated in initialize) ────────────────────────────
-    this.positions    = null; // Float32Array  [x,y,z per node]
-    this.scales       = null; // Float32Array  [scale per node]
-    this.profit       = null; // Float32Array  [profit_percent per node]
-    this.clusterIndex = null; // Uint16Array   [clusterIdx per node]
-    this.nodeIds      = [];   // string[]
+    this.positions     = null; // Float32Array  [x,y,z per node]
+    this.scales        = null; // Float32Array  [scale per node]
+    this.profit        = null; // Float32Array  [profit_percent per node]
+    this.clusterIndex  = null; // Uint16Array   [clusterIdx per node]
+    this.nodeIds       = [];   // string[]
+    this.subcategories = [];   // string[]  — e.g. "NBA", "BTC", "STAT_ARB"
 
     // ── Lookup maps ───────────────────────────────────────────────────────
-    this._nodeIndexMap     = new Map(); // nodeId → flat index
-    this._clusterNodeLists = new Map(); // clusterName → nodeIndex[]
-    this._instanceInfo     = new Map(); // nodeIndex → { mesh, instanceIndex, clusterName }
+    this._nodeIndexMap      = new Map(); // nodeId      → flat index
+    this._clusterNodeLists  = new Map(); // clusterName → nodeIndex[]
+    this._subcategoryIndex  = new Map(); // subcategory → nodeIndex[]
+    this._instanceInfo      = new Map(); // nodeIndex   → { mesh, instanceIndex, clusterName }
 
     // ── Per-cluster InstancedMeshes ───────────────────────────────────────
     this._clusterMeshes = new Map(); // clusterName → InstancedMesh
@@ -69,6 +71,10 @@ export class NodeRenderer {
     this._focusNeighborMesh = null; // up to 200 instances — immediate neighbors
     this._focusedNodeId     = null;
 
+    // ── Search result glow mesh ───────────────────────────────────────────
+    this._searchResultMesh     = null; // up to n instances — search hits
+    this._searchResultMaxCount = 0;   // tracks the buffer size (count is 0 when hidden)
+
     // ── Adjacency map ─────────────────────────────────────────────────────
     this._adjacency = new Map(); // nodeId → Set<nodeId>
 
@@ -80,6 +86,7 @@ export class NodeRenderer {
 
     this._buildHighlight();
     this._buildFocusMeshes();
+    // _buildSearchMesh() is deferred to initialize() when node count is known
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -91,18 +98,23 @@ export class NodeRenderer {
    */
   initialize(nodes) {
     this._clearClusterMeshes();
+    this._clearSearchMesh();
     this._nodeIndexMap.clear();
     this._clusterNodeLists.clear();
+    this._subcategoryIndex.clear();
     this._instanceInfo.clear();
     this._hoveredIndex = -1;
     this._highlightMesh.visible = false;
+    this._focusCenterMesh.visible   = false;
+    this._focusNeighborMesh.visible = false;
 
     const n = nodes.length;
-    this.positions    = new Float32Array(n * 3);
-    this.scales       = new Float32Array(n);
-    this.profit       = new Float32Array(n);
-    this.clusterIndex = new Uint16Array(n);
-    this.nodeIds      = new Array(n);
+    this.positions     = new Float32Array(n * 3);
+    this.scales        = new Float32Array(n);
+    this.profit        = new Float32Array(n);
+    this.clusterIndex  = new Uint16Array(n);
+    this.nodeIds       = new Array(n);
+    this.subcategories = new Array(n);
 
     // One seeded RNG per cluster for deterministic, stable layout
     const rngs = {};
@@ -116,7 +128,8 @@ export class NodeRenderer {
       const clName  = CLUSTERS[node.cluster] ? node.cluster : CLUSTER_NAMES[0];
       const clIdx   = CLUSTER_NAMES.indexOf(clName);
 
-      this.nodeIds[i] = node.node_id;
+      this.nodeIds[i]       = node.node_id;
+      this.subcategories[i] = node.subcategory ?? '';
       this._nodeIndexMap.set(node.node_id, i);
       this.clusterIndex[i] = clIdx;
 
@@ -145,11 +158,19 @@ export class NodeRenderer {
       this.profit[i] = node.metrics?.profit_percent ?? 0;
 
       // Cluster bucket
-      if (!this._clusterNodeLists.has(clName)) {
-        this._clusterNodeLists.set(clName, []);
-      }
+      if (!this._clusterNodeLists.has(clName)) this._clusterNodeLists.set(clName, []);
       this._clusterNodeLists.get(clName).push(i);
+
+      // Subcategory index
+      const sub = this.subcategories[i];
+      if (sub) {
+        if (!this._subcategoryIndex.has(sub)) this._subcategoryIndex.set(sub, []);
+        this._subcategoryIndex.get(sub).push(i);
+      }
     }
+
+    // Build search mesh now that n is known
+    this._buildSearchMesh(n);
 
     // ── Pass 2: build one InstancedMesh per cluster ───────────────────────
     CLUSTER_NAMES.forEach((clName) => {
@@ -279,6 +300,105 @@ export class NodeRenderer {
     if (this._onFocusCallback) this._onFocusCallback(null);
   }
 
+  // ── Search API ──────────────────────────────────────────────────────────────
+
+  /**
+   * Search nodes by multiple criteria. Returns a flat array of matching nodeIndices.
+   *
+   * @param {{
+   *   text?:        string,   // substring match against nodeId (case-insensitive)
+   *   cluster?:     string,   // exact cluster name
+   *   subcategory?: string,   // exact subcategory match (e.g. "NBA", "BTC")
+   *   minProfit?:   number,   // profit_percent ≥ minProfit
+   *   maxProfit?:   number,   // profit_percent ≤ maxProfit
+   * }} criteria
+   * @returns {number[]} nodeIndices
+   */
+  search(criteria = {}) {
+    const { text, cluster, subcategory, minProfit, maxProfit } = criteria;
+    const textLC = text?.trim().toLowerCase();
+    const hasProfMin = minProfit !== undefined && minProfit !== '';
+    const hasProfMax = maxProfit !== undefined && maxProfit !== '';
+
+    // ── Pick the smallest candidate set via available indices ─────────────
+    // Priority: subcategory > cluster > full scan
+    let candidates = null;
+    if (subcategory && this._subcategoryIndex.has(subcategory)) {
+      candidates = this._subcategoryIndex.get(subcategory);
+      // If cluster also specified, keep only those in the right cluster
+      if (cluster) {
+        const clIdx = CLUSTER_NAMES.indexOf(cluster);
+        candidates = candidates.filter(i => this.clusterIndex[i] === clIdx);
+      }
+    } else if (cluster && this._clusterNodeLists.has(cluster)) {
+      candidates = this._clusterNodeLists.get(cluster);
+    }
+
+    // ── Filter candidates (or full range) ────────────────────────────────
+    const results = [];
+    const n = this.nodeIds.length;
+
+    const check = (i) => {
+      if (hasProfMin && this.profit[i] < +minProfit) return;
+      if (hasProfMax && this.profit[i] > +maxProfit) return;
+      if (textLC && !this.nodeIds[i].toLowerCase().includes(textLC)) return;
+      results.push(i);
+    };
+
+    if (candidates) {
+      for (let j = 0; j < candidates.length; j++) check(candidates[j]);
+    } else {
+      for (let i = 0; i < n; i++) check(i);
+    }
+
+    return results;
+  }
+
+  /**
+   * Apply search results:
+   *   - 0 matches  → clear, return 0
+   *   - 1 match    → focus (camera + glow) + return 1
+   *   - N matches  → light up all with search-result mesh + return N
+   * @param {number[]} indices
+   * @returns {number} match count
+   */
+  applySearchResults(indices) {
+    this.clearSearchResults();
+    this.clearFocus();
+
+    if (!indices.length) return 0;
+
+    if (indices.length === 1) {
+      this.focusNode(this.nodeIds[indices[0]]);
+      return 1;
+    }
+
+    // Multiple — glow all
+    const cap = Math.min(indices.length, this._searchResultMaxCount);
+    for (let j = 0; j < cap; j++) {
+      const ni = indices[j];
+      const s = this.scales[ni] * 1.5;
+      this._dummy.position.copy(this._nodePosition(ni));
+      this._dummy.scale.set(s, s, s);
+      this._dummy.rotation.set(0, 0, 0);
+      this._dummy.updateMatrix();
+      this._searchResultMesh.setMatrixAt(j, this._dummy.matrix);
+    }
+    this._searchResultMesh.count = cap;
+    this._searchResultMesh.instanceMatrix.needsUpdate = true;
+    this._searchResultMesh.visible = true;
+
+    return indices.length;
+  }
+
+  /** Hide the search result glow mesh. */
+  clearSearchResults() {
+    if (this._searchResultMesh) {
+      this._searchResultMesh.visible = false;
+      this._searchResultMesh.count   = 0;
+    }
+  }
+
   /**
    * Show the highlight mesh on top of the hovered node.
    * Skips work if the index hasn't changed.
@@ -352,6 +472,16 @@ export class NodeRenderer {
     return [...this._clusterMeshes.values()];
   }
 
+  /** Sorted list of all known cluster names. */
+  getClusterNames() {
+    return CLUSTER_NAMES;
+  }
+
+  /** Sorted list of all known subcategories. */
+  getSubcategories() {
+    return [...this._subcategoryIndex.keys()].sort();
+  }
+
   dispose() {
     this._clearClusterMeshes();
     this.scene.remove(this._nodeGroup);
@@ -367,10 +497,37 @@ export class NodeRenderer {
       this.scene.remove(this._focusNeighborMesh);
       this._focusNeighborMesh.material.dispose();
     }
+    this._clearSearchMesh();
     this._geometry.dispose();
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
+
+  _buildSearchMesh(n) {
+    this._clearSearchMesh();
+    const mat = new THREE.MeshStandardMaterial({
+      color:             0x39ff14, // neon green — unmistakable search highlight
+      emissive:          0x39ff14,
+      emissiveIntensity: 1.4,
+      roughness:         0.25,
+      metalness:         0.3,
+    });
+    this._searchResultMesh = new THREE.InstancedMesh(this._geometry, mat, n);
+    this._searchResultMesh.count       = 0;
+    this._searchResultMesh.visible     = false;
+    this._searchResultMesh.renderOrder = 3;
+    this._searchResultMaxCount         = n;
+    this.scene.add(this._searchResultMesh);
+  }
+
+  _clearSearchMesh() {
+    if (this._searchResultMesh) {
+      this.scene.remove(this._searchResultMesh);
+      this._searchResultMesh.material.dispose();
+      this._searchResultMesh     = null;
+      this._searchResultMaxCount = 0;
+    }
+  }
 
   _buildFocusMeshes() {
     // Focused center node — very bright white-gold emissive

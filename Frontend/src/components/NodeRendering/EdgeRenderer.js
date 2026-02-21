@@ -1,19 +1,17 @@
 import * as THREE from 'three';
 
-// Dim cluster-tinted colors for intra-cluster edges
-const CLUSTER_EDGE_COLORS = {
-  sports: 0x5a2020,
-  quant:  0x1a4040,
-  crypto: 0x4a4010,
-  misc:   0x2a1a5a,
-  cross:  0x1e2a3a, // cross-cluster edges
-};
-
 export class EdgeRenderer {
   /** @param {THREE.Scene} scene */
   constructor(scene) {
     this.scene  = scene;
     this._mesh  = null;
+
+    // Kept for focus-edge rebuilds
+    this._connections   = [];
+    this._nodeRenderer  = null;
+
+    // Solid bright overlay for focused edges
+    this._focusMesh = null;
   }
 
   /**
@@ -24,7 +22,10 @@ export class EdgeRenderer {
    * @param {import('./NodeRenderer').NodeRenderer} nodeRenderer
    */
   initialize(connections, nodeRenderer) {
+    this._connections  = connections ?? [];
+    this._nodeRenderer = nodeRenderer;
     this._clear();
+    this._clearFocusMesh();
     if (!connections?.length) return;
 
     const posBuffer = nodeRenderer.buildEdgeBuffer(connections);
@@ -48,9 +49,48 @@ export class EdgeRenderer {
     this.scene.add(this._mesh);
   }
 
+  /**
+   * Highlight edges connected to focusedNodeId as solid bright lines.
+   * @param {string|null} nodeId
+   * @param {import('./NodeRenderer').NodeRenderer} nodeRenderer
+   */
+  setFocusEdges(nodeId, nodeRenderer) {
+    this._clearFocusMesh();
+    if (!nodeId || !this._connections.length) return;
+
+    const focused = this._connections.filter(
+      ({ source, target }) => source === nodeId || target === nodeId,
+    );
+    if (!focused.length) return;
+
+    const posBuffer = nodeRenderer.buildEdgeBuffer(focused);
+    if (!posBuffer.length) return;
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(posBuffer, 3));
+
+    const material = new THREE.LineBasicMaterial({
+      color:       0x00e5ff,
+      opacity:     0.95,
+      transparent: true,
+      linewidth:   1, // WebGL ignores linewidth > 1 on most GPUs; kept for spec
+    });
+
+    this._focusMesh = new THREE.LineSegments(geometry, material);
+    this._focusMesh.renderOrder = 1;
+    this.scene.add(this._focusMesh);
+  }
+
+  clearFocusEdges() {
+    this._clearFocusMesh();
+  }
+
   dispose() {
     this._clear();
+    this._clearFocusMesh();
   }
+
+  // ── Private ───────────────────────────────────────────────────────────────
 
   _clear() {
     if (this._mesh) {
@@ -58,6 +98,15 @@ export class EdgeRenderer {
       this._mesh.geometry.dispose();
       this._mesh.material.dispose();
       this._mesh = null;
+    }
+  }
+
+  _clearFocusMesh() {
+    if (this._focusMesh) {
+      this.scene.remove(this._focusMesh);
+      this._focusMesh.geometry.dispose();
+      this._focusMesh.material.dispose();
+      this._focusMesh = null;
     }
   }
 }

@@ -115,7 +115,11 @@ export class InteractionController {
   _onClick(event) {
     this._updateMouse(event);
     const nodeIndex = this._raycast();
-    if (nodeIndex === null) return;
+    if (nodeIndex === null) {
+      // Click on empty space — clear any active focus glow
+      this.nodeRenderer.clearFocus();
+      return;
+    }
     const { nodeId } = this.nodeRenderer.getNodeData(nodeIndex);
     this.nodeRenderer.focusNode(nodeId);
   }

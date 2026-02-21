@@ -62,8 +62,14 @@ export class SceneManager {
    */
   loadNodes(nodes, connections = []) {
     this.nodeRenderer.initialize(nodes);
+    this.nodeRenderer.loadConnections(connections);
     this.edgeRenderer.initialize(connections, this.nodeRenderer);
     this.interactionController.refresh();
+
+    // Wire focus callback: when a node is focused, update the edge overlay
+    this.nodeRenderer._onFocusCallback = (nodeId) => {
+      this.edgeRenderer.setFocusEdges(nodeId, this.nodeRenderer);
+    };
   }
 
   /** Start the render loop. */

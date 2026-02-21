@@ -65,10 +65,12 @@ export default function NodeRender() {
       }}>
         <div style={{ marginBottom: 4, color: '#fff', fontWeight: 'bold' }}>Clusters</div>
         {[
-          { label: 'Sports', color: '#ff6b6b' },
-          { label: 'Quant',  color: '#4ecdc4' },
-          { label: 'Crypto', color: '#f7d794' },
-          { label: 'Misc',   color: '#a29bfe' },
+          { label: 'Sports',      color: '#ff6b6b' },
+          { label: 'Quant',       color: '#4ecdc4' },
+          { label: 'Crypto',      color: '#f7d794' },
+          { label: 'Football',    color: '#55efc4' },
+          { label: 'Forex',       color: '#fd79a8' },
+          { label: 'Commodities', color: '#e17055' },
         ].map(({ label, color }) => (
           <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{
@@ -83,7 +85,7 @@ export default function NodeRender() {
           </div>
         ))}
         <div style={{ marginTop: 8, color: '#888', fontSize: 10 }}>
-          Hover to inspect · Click to focus
+          Hover to inspect · Click to focus &amp; glow
         </div>
       </div>
     </div>

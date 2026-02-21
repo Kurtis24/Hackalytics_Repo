@@ -31,12 +31,30 @@ const CRYPTO_PAIRS = [
 
 const CRYPTO_EXCHANGES = ['Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'dYdX', 'Uniswap'];
 
-const MISC_EVENTS = [
-  'FOREX_EUR_USD', 'FOREX_GBP_JPY', 'COMMOD_GOLD_SPOT', 'COMMOD_OIL_WTI',
-  'ECON_CPI_RELEASE', 'ECON_FED_FOMC', 'IPO_LOCK_REDDIT', 'CONVERT_BOND_NVDA',
-  'PRED_MARKET_ELEC', 'REAL_EST_REIT_ARB', 'CARBON_CREDIT_EU', 'WEATHER_DERIV_CME',
-  'FX_CROSS_NOK_SEK', 'EM_BOND_BRAZIL', 'INFRA_TOLL_BOND', 'ART_NFT_INDEX',
+const FOOTBALL_EVENTS = [
+  'NFL_KC_SF', 'NFL_DAL_PHI', 'NFL_GB_MIN', 'NFL_BAL_CIN', 'NFL_BUF_MIA',
+  'NCAAF_ALA_GA', 'NCAAF_OSU_MICH', 'NCAAF_UGA_LSU', 'NCAAF_ORE_WASH',
+  'EPL_MCI_MUN', 'EPL_ARS_CHE', 'EPL_LIV_TOT', 'LA_LIGA_BAR_RM',
+  'UCL_PSG_BAY', 'UCL_ATM_CHE', 'BUNDESLIGA_BAY_DOR', 'SERIE_A_JUV_INT',
+  'CFL_EDM_CAL', 'XFL_DC_HOU', 'AFL_GWS_SYD',
 ];
+const FOOTBALL_EXCHANGES = ['DraftKings', 'FanDuel', 'BetMGM', 'Bet365', 'William Hill', 'Unibet'];
+
+const FOREX_PAIRS = [
+  'EUR_USD', 'GBP_JPY', 'USD_JPY', 'AUD_USD', 'USD_CAD',
+  'EUR_GBP', 'NZD_USD', 'USD_CHF', 'EUR_JPY', 'GBP_USD',
+  'USD_MXN', 'USD_SGD', 'EUR_AUD', 'USD_HKD', 'USD_NOK',
+  'USD_SEK', 'EUR_CHF', 'AUD_JPY', 'GBP_AUD', 'CAD_JPY',
+];
+const FOREX_BROKERS = ['OANDA', 'IG', 'Saxo', 'Interactive Brokers', 'Pepperstone', 'CMC'];
+
+const COMMODITY_MARKETS = [
+  'GOLD_SPOT', 'SILVER_SPOT', 'OIL_WTI', 'OIL_BRENT', 'NAT_GAS_HH',
+  'COPPER_LME', 'WHEAT_CBOT', 'CORN_CBOT', 'SOYBEAN_CBOT', 'COTTON_ICE',
+  'COFFEE_ICE', 'SUGAR_ICE', 'LUMBER_CME', 'PALLADIUM_SPOT', 'PLATINUM_SPOT',
+  'ALUM_LME', 'ZINC_LME', 'NICKEL_LME', 'LEAN_HOG_CME', 'LIVE_CATTLE_CME',
+];
+const COMMODITY_VENUES = ['CME', 'ICE', 'LME', 'NYMEX', 'CBOT', 'TOCOM'];
 
 // ── LCG for reproducible random data (seed-based) ─────────────────────────────
 function lcg(seed) {
@@ -112,12 +130,74 @@ function buildCryptoNode(i, rng) {
   };
 }
 
+function buildFootballNode(i, rng) {
+  const event    = pick(rng, FOOTBALL_EVENTS);
+  const exchange = pick(rng, FOOTBALL_EXCHANGES);
+  const alt      = pick(rng, FOOTBALL_EXCHANGES.filter(e => e !== exchange));
+  return {
+    node_id: `FBL_${event}_${i}`,
+    cluster: 'football',
+    subcategory: event.split('_')[0],
+    metrics: {
+      event_count:    Math.floor(rng() * 150) + 2,
+      profit_percent: rng() * 5 + 0.1,
+      score:          rng(),
+    },
+    event_preview: [
+      { event_type: 'spread',    exchange,     price: +(rng() * 10 - 5).toFixed(1) },
+      { event_type: 'moneyline', exchange: alt, price: +(1.4 + rng() * 2).toFixed(2) },
+    ],
+  };
+}
+
+function buildForexNode(i, rng) {
+  const pair   = pick(rng, FOREX_PAIRS);
+  const broker = pick(rng, FOREX_BROKERS);
+  const alt    = pick(rng, FOREX_BROKERS.filter(b => b !== broker));
+  const profit = rng() * 0.8 + 0.01; // forex arb is tiny
+  return {
+    node_id: `FX_${pair}_${i}`,
+    cluster: 'forex',
+    subcategory: pair.split('_')[0],
+    metrics: {
+      event_count:    Math.floor(rng() * 800) + 50,
+      profit_percent: profit,
+      score:          rng(),
+    },
+    event_preview: [
+      { event_type: 'spot', exchange: broker, price: +(rng() * 2 + 0.5).toFixed(5) },
+      { event_type: 'spot', exchange: alt,    price: +(rng() * 2 + 0.5).toFixed(5) },
+    ],
+  };
+}
+
+function buildCommodityNode(i, rng) {
+  const market = pick(rng, COMMODITY_MARKETS);
+  const venue  = pick(rng, COMMODITY_VENUES);
+  const alt    = pick(rng, COMMODITY_VENUES.filter(v => v !== venue));
+  const profit = (rng() - 0.25) * 4;
+  return {
+    node_id: `CMD_${market}_${i}`,
+    cluster: 'commodities',
+    subcategory: market.split('_')[0],
+    metrics: {
+      event_count:    Math.floor(rng() * 200) + 5,
+      profit_percent: profit,
+      score:          rng(),
+    },
+    event_preview: [
+      { event_type: 'futures', exchange: venue, price: +(rng() * 3000 + 10).toFixed(2) },
+      { event_type: 'futures', exchange: alt,   price: +(rng() * 3000 + 10).toFixed(2) },
+    ],
+  };
+}
+
 function buildMiscNode(i, rng) {
-  const event  = pick(rng, MISC_EVENTS);
+  const event  = pick(rng, FOOTBALL_EVENTS); // repurpose as fallback
   const profit = (rng() - 0.35) * 10;
   return {
     node_id: `MSC_${event}_${i}`,
-    cluster: 'misc',
+    cluster: 'football',
     subcategory: event.split('_')[0],
     metrics: {
       event_count:    Math.floor(rng() * 100) + 1,
@@ -133,33 +213,21 @@ function buildMiscNode(i, rng) {
 // ── Cross-cluster bridge nodes ─────────────────────────────────────────────────
 // Must roughly match cluster centers in NodeRenderer.js
 const MOCK_CENTERS = {
-  sports: [-2000,  0,     0],
-  quant:  [ 1400,  0,     0],
-  crypto: [    0,  0,  1200],
-  misc:   [    0,  0, -1000],
+  sports:      [-1000,  0,     0],
+  quant:       [ 1400,  0,     0],
+  crypto:      [    0,  0,  1200],
+  football:    [    0,  0, -1200],
+  forex:       [-1200,  0,  -900],
+  commodities: [ 1000,  0,  -900],
 };
 
 const BRIDGE_PAIRS = [
-  {
-    a: 'sports', b: 'misc',
-    theme: 'PRED_MKT',
-    exchanges: ['Kalshi', 'Polymarket', 'Betfair'],
-  },
-  {
-    a: 'sports', b: 'crypto',
-    theme: 'CRYPTO_SPORT',
-    exchanges: ['Augur', 'SportX', 'Stake'],
-  },
-  {
-    a: 'quant', b: 'crypto',
-    theme: 'DEFI_QUANT',
-    exchanges: ['dYdX', 'Aave', 'Vertex'],
-  },
-  {
-    a: 'quant', b: 'misc',
-    theme: 'MACRO_ARB',
-    exchanges: ['ICE', 'EUREX', 'LME'],
-  },
+  { a: 'sports',   b: 'football',    theme: 'PRED_MKT',    exchanges: ['Kalshi', 'Polymarket', 'Betfair'] },
+  { a: 'sports',   b: 'crypto',      theme: 'CRYPTO_SPORT', exchanges: ['Augur', 'SportX', 'Stake'] },
+  { a: 'quant',    b: 'crypto',      theme: 'DEFI_QUANT',  exchanges: ['dYdX', 'Aave', 'Vertex'] },
+  { a: 'quant',    b: 'commodities', theme: 'MACRO_ARB',   exchanges: ['ICE', 'EUREX', 'LME'] },
+  { a: 'forex',    b: 'commodities', theme: 'FX_COMMOD',   exchanges: ['Saxo', 'OANDA', 'CME'] },
+  { a: 'football', b: 'forex',       theme: 'INTL_SPORT',  exchanges: ['Bet365', 'William Hill', 'IG'] },
 ];
 
 function buildBridgeNodes(startIdx, count, rng) {
@@ -212,12 +280,21 @@ export function generateMockNodes(count = 20000) {
   const nodes = [];
 
   // Distribute roughly evenly across clusters with slight variation
-  const weights = { sports: 0.30, quant: 0.25, crypto: 0.30, misc: 0.15 };
+  const weights = {
+    sports:      0.18,
+    quant:       0.18,
+    crypto:      0.18,
+    football:    0.18,
+    forex:       0.15,
+    commodities: 0.13,
+  };
   const builders = {
-    sports: buildSportsNode,
-    quant:  buildQuantNode,
-    crypto: buildCryptoNode,
-    misc:   buildMiscNode,
+    sports:      buildSportsNode,
+    quant:       buildQuantNode,
+    crypto:      buildCryptoNode,
+    football:    buildFootballNode,
+    forex:       buildForexNode,
+    commodities: buildCommodityNode,
   };
 
   // Pre-allocate counts

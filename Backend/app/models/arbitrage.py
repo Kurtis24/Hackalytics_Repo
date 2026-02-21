@@ -2,7 +2,7 @@ from pydantic import BaseModel, field_validator
 
 
 # ---------------------------------------------------------------------------
-# Input — Prediction Model → Middleware  (PRD §2.1)
+# Input — Prediction Model → Middleware  (PRD v3 §6)
 # ---------------------------------------------------------------------------
 
 class MarketInput(BaseModel):
@@ -10,8 +10,10 @@ class MarketInput(BaseModel):
     confidence: float       # 0.0 – 1.0
     bookmaker_1: str        # Sportsbook name — side A
     bookmaker_2: str        # Sportsbook name — side B
-    price_1: int            # American odds at bookmaker_1
-    price_2: int            # American odds at bookmaker_2 (opposing side)
+    price_1: int            # Current American odds at bookmaker_1
+    price_2: int            # Current American odds at bookmaker_2 (opposing side)
+    open_price_1: int | None = None   # Opening odds at bookmaker_1 (NEW — PRD v3 §2)
+    open_price_2: int | None = None   # Opening odds at bookmaker_2 (NEW — PRD v3 §2)
     prediction: str         # Human-readable model label (internal only)
 
 
@@ -31,7 +33,7 @@ class PredictionInput(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Output — Middleware → Frontend  (PRD §2.2)
+# Output — Middleware → Frontend  (PRD v3 §7)
 # ---------------------------------------------------------------------------
 
 class SportsbookEntry(BaseModel):
@@ -41,18 +43,29 @@ class SportsbookEntry(BaseModel):
 
 
 class ArbitrageOpportunity(BaseModel):
+    # Game context (pass-through)
     category: str
     date: str
     home_team: str
     away_team: str
     market_type: str
     confidence: float
+
+    # Scores
     profit_score: float         # 0-1 normalised arb margin quality
     risk_score: float           # 0-1 composite risk (0 = lowest)
+
+    # Volume — optimal stakes (PRD v3 §7)
+    optimal_volume: int         # Total stake across both books (Kelly & ceiling constrained)
     stake_book1: int            # USD to place at bookmaker_1
     stake_book2: int            # USD to place at bookmaker_2
-    total_stake: int            # stake_book1 + stake_book2
-    guaranteed_profit: int      # USD profit regardless of outcome (0 if no arb)
+    guaranteed_profit: int      # USD profit guaranteed regardless of outcome
+
+    # Diagnostic fields — show which constraint was binding (PRD v3 §7)
+    line_movement: float        # Measured IP movement from open to current
+    market_ceiling: int         # Estimated max stake before market detects position
+    kelly_stake: int            # Kelly-optimal stake before ceiling constraint
+
     sportsbooks: list[SportsbookEntry]
 
 
@@ -70,11 +83,11 @@ class RiskDistribution(BaseModel):
 class PortfolioAnalysis(BaseModel):
     total_opportunities: int
     confirmed_arbs: int             # profit_score > 0
-    value_bets: int                 # profit_score == 0 (confidence-driven)
-    total_capital_required: int     # sum of all total_stake
+    value_bets: int                 # profit_score == 0 (below floor, shouldn't reach here)
+    total_capital_required: int     # sum of all optimal_volume
     expected_total_profit: int      # sum of all guaranteed_profit
     avg_profit_score: float
     avg_risk_score: float
     risk_distribution: RiskDistribution
-    best_opportunity: ArbitrageOpportunity | None   # highest profit_score, lowest risk
+    best_opportunity: ArbitrageOpportunity | None
     ranked_opportunities: list[ArbitrageOpportunity]  # profit_score ↓, risk_score ↑

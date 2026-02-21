@@ -11,20 +11,36 @@ class Settings(BaseSettings):
         "http://localhost:3000", "http://localhost:5173"]
     days_ahead: int = 60
 
-    # ------------------------------------------------------------------
-    # Arbitrage Middleware — all values from PRD section 7
-    # ------------------------------------------------------------------
-    min_confidence: float = 0.60       # Markets below this are silently dropped
-    bankroll: int = 100_000            # Operator's total capital pool (USD)
-    kelly_fraction: float = 0.25       # Quarter Kelly — see PRD §4.3
-    max_total_stake: int = 10_000      # Hard cap per market (USD)
-    profit_cap: float = 0.05           # 5 % arb margin = profit_score 1.0
-    arb_risk_cap: float = 0.10         # Overround cap for arb validity risk
-    exposure_cap: int = 200            # stake:profit ratio → market impact risk = 1.0
-
     # URL of the ML model endpoint that returns prediction payloads.
-    # Set ML_MODEL_URL in .env to point at your real model server.
     ml_model_url: str = ""
+
+    # ------------------------------------------------------------------
+    # Arbitrage Middleware — PRD v3 Volume Optimization (§5)
+    # ------------------------------------------------------------------
+    min_confidence: float = 0.60        # Confidence filter — markets below this are dropped
+
+    bankroll: int = 100_000             # Total capital pool (USD)
+    kelly_fraction: float = 0.25        # Quarter Kelly for stealth + resilience
+    bankroll_cap_pct: float = 0.10      # Max fraction of bankroll on any single market
+
+    min_profit_floor: int = 5           # Drop market if guaranteed_profit < this (USD)
+
+    # Line movement sensitivity (PRD §3 Step 2)
+    # USD depth per 1.0 unit of implied probability movement.
+    # Calibrated for a $100k bankroll on major US sportsbooks (DraftKings / FanDuel / ESPNBet).
+    # On NBA/NFL tier-1 markets a $1k–$5k bet barely moves the line — books handle millions/day.
+    # Lower if accounts get limited; lower trigger_threshold (e.g. 0.003) if lines move after bets.
+    trigger_threshold: float = 0.005        # Max additional IP movement allowed before "too moved"
+    sensitivity_moneyline: int = 2_000_000  # NBA/NFL moneyline — most liquid
+    sensitivity_spread: int = 1_500_000     # NBA/NFL spread — moderately liquid
+    sensitivity_points_total: int = 1_000_000  # Totals — least liquid
+
+    # profit_score normalisation ceiling (5% arb margin = score of 1.0)
+    profit_cap: float = 0.05
+
+    # Risk score inputs
+    arb_risk_cap: float = 0.10          # Overround cap for arb validity risk
+    exposure_cap: int = 200             # stake:profit ratio → market impact risk = 1.0
 
     # Risk-score weights — MUST sum to exactly 1.0 (validated at startup)
     weight_confidence: float = 0.40

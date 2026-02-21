@@ -101,6 +101,46 @@ export default function NodeRender() {
     if (e.key === 'Enter') handleSearch();
   }, [handleSearch]);
 
+  // ── Preset filters ──────────────────────────────────────────────────────────
+  const applyPreset = useCallback((preset) => {
+    handleClear();
+    
+    setTimeout(() => {
+      const manager = managerRef.current;
+      if (!manager) return;
+      
+      const criteria = {};
+      if (preset === 'high-risk') {
+        setMinProfit('5');
+        setMaxProfit('10');
+        setMinRisk('0.6');
+        setMinVolume('200000');
+        criteria.minProfit = 5;
+        criteria.maxProfit = 10;
+        criteria.minRisk = 0.6;
+        criteria.minVolume = 200000;
+      } else if (preset === 'safe') {
+        setMinProfit('0.5');
+        setMaxRisk('0.35');
+        setMinConf('0.7');
+        setMinVolume('100000');
+        criteria.minProfit = 0.5;
+        criteria.maxRisk = 0.35;
+        criteria.minConf = 0.7;
+        criteria.minVolume = 100000;
+      } else if (preset === 'live') {
+        setLiveOnly(true);
+        setMinProfit('0.5');
+        criteria.live = true;
+        criteria.minProfit = 0.5;
+      }
+      
+      const indices = manager.nodeRenderer.search(criteria);
+      const count = manager.applySearch(indices);
+      setResultInfo({ count });
+    }, 50);
+  }, [handleClear]);
+
   // ── Styles ──────────────────────────────────────────────────────────────────
   const inputStyle = {
     background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
@@ -119,6 +159,22 @@ export default function NodeRender() {
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(255,255,255,0.03);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.15);
+          border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(255,255,255,0.25);
+        }
+      `}</style>
 
       {/* Error overlay */}
       {error && (
@@ -135,37 +191,106 @@ export default function NodeRender() {
       <canvas ref={canvasRef}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
 
-      {/* ── Search toggle button ───────────────────────────────────────────────── */}
-      {ready && (
-        <button
-          onClick={() => setShowSearch(!showSearch)}
-          style={{
-            position: 'absolute', top: 16, right: 16, zIndex: 11,
-            background: 'rgba(8,8,20,0.90)',
-            border: '1px solid rgba(255,255,255,0.20)',
-            borderRadius: 8,
-            color: '#fff',
-            fontSize: 12,
-            fontFamily: 'monospace',
-            fontWeight: 'bold',
-            padding: '10px 16px',
-            cursor: 'pointer',
-          }}
-        >
-          {showSearch ? '✕ Hide Search' : '🔍 Search'}
-        </button>
-      )}
-
       {/* ── Search panel ────────────────────────────────────────────────────── */}
-      {ready && showSearch && (
+      {ready && (
         <div style={{
-          position: 'absolute', top: 60, right: 16, width: 230, maxHeight: 'calc(100vh - 76px)',
+          position: 'absolute', top: 16, right: 16, width: 230, maxHeight: 'calc(100vh - 32px)',
           background: 'rgba(8,8,20,0.90)', border: '1px solid rgba(255,255,255,0.10)',
-          borderRadius: 8, padding: '12px 14px', fontFamily: 'monospace', fontSize: 11,
-          color: '#ccc', zIndex: 10, display: 'flex', flexDirection: 'column', gap: 7,
-          overflowY: 'auto',
+          borderRadius: 8, fontFamily: 'monospace', fontSize: 11,
+          color: '#ccc', zIndex: 10, display: 'flex', flexDirection: 'column',
+          boxSizing: 'border-box',
         }}>
-          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 2 }}>Search filters</div>
+          {/* Header with toggle */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 14px', borderBottom: showSearch ? '1px solid rgba(255,255,255,0.10)' : 'none',
+          }}>
+            <div style={{ color: '#fff', fontWeight: 'bold' }}>Search Filters</div>
+            <button
+              onClick={() => setShowSearch(!showSearch)}
+              style={{
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 4,
+                color: '#999',
+                fontSize: 10,
+                fontFamily: 'monospace',
+                padding: '4px 8px',
+                cursor: 'pointer',
+                pointerEvents: 'auto',
+              }}
+            >
+              {showSearch ? '✕ Hide' : '▼ Show'}
+            </button>
+          </div>
+
+          {/* Collapsible content */}
+          {showSearch && (
+            <div style={{
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 7,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+            }}
+            className="custom-scrollbar"
+            >
+
+          {/* Preset tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 4 }}>
+            <button
+              onClick={() => applyPreset('high-risk')}
+              style={{
+                flex: 1,
+                background: 'rgba(255,107,107,0.15)',
+                border: '1px solid rgba(255,107,107,0.40)',
+                borderRadius: 4,
+                color: '#ff6b6b',
+                fontSize: 10,
+                fontFamily: 'monospace',
+                padding: '6px 4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              High Risk
+            </button>
+            <button
+              onClick={() => applyPreset('safe')}
+              style={{
+                flex: 1,
+                background: 'rgba(57,255,20,0.15)',
+                border: '1px solid rgba(57,255,20,0.40)',
+                borderRadius: 4,
+                color: '#39ff14',
+                fontSize: 10,
+                fontFamily: 'monospace',
+                padding: '6px 4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              Safe Bets
+            </button>
+            <button
+              onClick={() => applyPreset('live')}
+              style={{
+                flex: 1,
+                background: 'rgba(255,51,51,0.15)',
+                border: '1px solid rgba(255,51,51,0.40)',
+                borderRadius: 4,
+                color: '#ff3333',
+                fontSize: 10,
+                fontFamily: 'monospace',
+                padding: '6px 4px',
+                cursor: 'pointer',
+                fontWeight: 'bold',
+              }}
+            >
+              Live Now
+            </button>
+          </div>
 
           {/* Text */}
           <input style={inputStyle} placeholder="node ID substring…"
@@ -277,39 +402,30 @@ export default function NodeRender() {
                   : `${resultInfo.count.toLocaleString()} nodes glowing`}
             </div>
           )}
-        </div>
-      )}
 
-      {/* ── Show All Nodes button ─────────────────────────────────────────────── */}
-      {ready && resultInfo !== null && showSearch && (
-        <div style={{
-          position: 'absolute', top: 60, right: 262, zIndex: 10,
-        }}>
-          <button
-            onClick={handleClear}
-            style={{
-              background: 'rgba(8,8,20,0.90)',
-              border: '1px solid rgba(255,255,255,0.20)',
-              borderRadius: 8,
-              color: '#39ff14',
-              fontSize: 12,
-              fontFamily: 'monospace',
-              fontWeight: 'bold',
-              padding: '10px 16px',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              e.target.style.background = 'rgba(57,255,20,0.15)';
-              e.target.style.borderColor = 'rgba(57,255,20,0.50)';
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = 'rgba(8,8,20,0.90)';
-              e.target.style.borderColor = 'rgba(255,255,255,0.20)';
-            }}
-          >
-            Show All Nodes
-          </button>
+          {/* Show All Nodes button */}
+          {resultInfo !== null && (
+            <button
+              onClick={handleClear}
+              style={{
+                background: 'rgba(57,255,20,0.15)',
+                border: '1px solid rgba(57,255,20,0.40)',
+                borderRadius: 6,
+                color: '#39ff14',
+                fontSize: 12,
+                fontFamily: 'monospace',
+                fontWeight: 'bold',
+                padding: '10px 0',
+                cursor: 'pointer',
+                width: '100%',
+                marginTop: 4,
+              }}
+            >
+              Show All Nodes
+            </button>
+          )}
+            </div>
+          )}
         </div>
       )}
 

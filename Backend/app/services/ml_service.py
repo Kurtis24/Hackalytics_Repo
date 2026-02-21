@@ -4,6 +4,10 @@ ML Model Service
 POSTs to the configured ML_MODEL_URL to fetch a prediction payload.
 Falls back to the built-in sample if the URL is not set, so the API
 always returns something useful in development.
+
+Sample payload includes opening odds (open_price_1 / open_price_2) per PRD v3 §2.
+The spread market is a genuine two-sided arb; the other two markets are not,
+and will be dropped by the floor check in arbitrage_service.
 """
 
 import logging
@@ -20,30 +24,40 @@ SAMPLE_PAYLOAD = {
     "away_team": "New York Knicks",
     "markets": [
         {
+            # True arb: +140 / +135 — line barely moved from open (+138 / +133)
+            # arb_margin ≈ 15.7% (exceptional odds; real markets typically 0.5-3%)
             "market_type": "spread",
             "confidence": 0.65,
             "bookmaker_1": "DraftKings",
             "bookmaker_2": "ESPNBet",
             "price_1": 140,
             "price_2": 135,
+            "open_price_1": 138,
+            "open_price_2": 133,
             "prediction": "home_team wins by 6",
         },
         {
+            # No arb: both sides -110 / -105 — vig still present
             "market_type": "points_total",
             "confidence": 0.61,
             "bookmaker_1": "DraftKings",
             "bookmaker_2": "FanDuel",
             "price_1": -110,
             "price_2": -105,
+            "open_price_1": -110,
+            "open_price_2": -105,
             "prediction": "home_team scores over 110",
         },
         {
+            # No arb: -120 / +115 — implied sum > 1.0
             "market_type": "moneyline",
             "confidence": 0.72,
             "bookmaker_1": "DraftKings",
             "bookmaker_2": "ESPNBet",
             "price_1": -120,
             "price_2": 115,
+            "open_price_1": -115,
+            "open_price_2": 110,
             "prediction": "home_team wins",
         },
     ],

@@ -1,4 +1,6 @@
-claude/
+.claude/
+node_modules/
+package-lock.json
 
 # Backend (avoid re-adding if already tracked)
 Backend/venv/

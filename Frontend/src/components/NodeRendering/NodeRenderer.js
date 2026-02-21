@@ -2,12 +2,12 @@ import * as THREE from 'three';
 
 // ─── Cluster configuration ────────────────────────────────────────────────────
 const CLUSTERS = {
-  sports: { color: 0xff6b6b, center: [-1000,  0,     0] },
-  quant:  { color: 0x4ecdc4, center: [ 1400,  0,     0] },
-  crypto: { color: 0xf7d794, center: [    0,  0,  1200] },
-  // basketball:   { color: 0xa29bfe, center: [    0,  0, -1000] },
-  // soccer:   { color: 0xa29bfe, center: [    0,  0, -1000] },
-  // F1:   { color: 0xa29bfe, center: [    0,  0, -1000] },
+  sports:      { color: 0xff6b6b, center: [-1000,  0,     0] },
+  quant:       { color: 0x4ecdc4, center: [  1400,  0,     0] },
+  crypto:      { color: 0xf7d794, center: [     0,  0,  1200] },
+  football:    { color: 0x55efc4, center: [     0,  0, -1200] },
+  forex:       { color: 0xfd79a8, center: [ -1200,  0,  -900] },
+  commodities: { color: 0xe17055, center: [  1000,  0,  -900] },
 };
 const CLUSTER_NAMES  = Object.keys(CLUSTERS);
 const SCATTER_RADIUS = 800; // node distance
@@ -64,10 +64,22 @@ export class NodeRenderer {
     this._highlightMesh  = null;
     this._hoveredIndex   = -1;
 
+    // ── Focus glow meshes ─────────────────────────────────────────────────
+    this._focusCenterMesh   = null; // 1 instance  — the clicked node
+    this._focusNeighborMesh = null; // up to 200 instances — immediate neighbors
+    this._focusedNodeId     = null;
+
+    // ── Adjacency map ─────────────────────────────────────────────────────
+    this._adjacency = new Map(); // nodeId → Set<nodeId>
+
+    // ── Focus callback (wired by SceneManager) ────────────────────────────
+    this._onFocusCallback = null; // (nodeId: string) => void
+
     // Reusable Object3D for matrix writes (never added to scene)
     this._dummy = new THREE.Object3D();
 
     this._buildHighlight();
+    this._buildFocusMeshes();
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
@@ -191,12 +203,80 @@ export class NodeRenderer {
   }
 
   /**
+   * Build the adjacency map from a connections array.
+   * Call after initialize() so nodeIds are populated.
+   * @param {Array<{source: string, target: string}>} connections
+   */
+  loadConnections(connections) {
+    this._adjacency.clear();
+    connections.forEach(({ source, target }) => {
+      if (!this._adjacency.has(source)) this._adjacency.set(source, new Set());
+      if (!this._adjacency.has(target)) this._adjacency.set(target, new Set());
+      this._adjacency.get(source).add(target);
+      this._adjacency.get(target).add(source);
+    });
+  }
+
+  /**
    * Animate camera to focus on a node by its ID.
+   * Also applies the focus glow and fires _onFocusCallback.
    */
   focusNode(nodeId) {
     const i = this._nodeIndexMap.get(nodeId);
     if (i === undefined) return;
     this.cameraController.focusNode(this._nodePosition(i));
+    this._applyFocusGlow(nodeId);
+    if (this._onFocusCallback) this._onFocusCallback(nodeId);
+  }
+
+  /**
+   * Light up the focused node and its immediate neighbors.
+   */
+  _applyFocusGlow(nodeId) {
+    this._focusedNodeId = nodeId;
+
+    // ── Center node glow ──────────────────────────────────────────────────
+    const ci = this._nodeIndexMap.get(nodeId);
+    if (ci !== undefined) {
+      const s = this.scales[ci] * 1.6;
+      this._dummy.position.copy(this._nodePosition(ci));
+      this._dummy.scale.set(s, s, s);
+      this._dummy.rotation.set(0, 0, 0);
+      this._dummy.updateMatrix();
+      this._focusCenterMesh.setMatrixAt(0, this._dummy.matrix);
+      this._focusCenterMesh.instanceMatrix.needsUpdate = true;
+      this._focusCenterMesh.count   = 1;
+      this._focusCenterMesh.visible = true;
+    }
+
+    // ── Neighbor glow ─────────────────────────────────────────────────────
+    const neighbors = this._adjacency.get(nodeId) ?? new Set();
+    const neighborArr = [...neighbors].slice(0, 200);
+    let instIdx = 0;
+    neighborArr.forEach((nid) => {
+      const ni = this._nodeIndexMap.get(nid);
+      if (ni === undefined) return;
+      const s = this.scales[ni] * 1.45;
+      this._dummy.position.copy(this._nodePosition(ni));
+      this._dummy.scale.set(s, s, s);
+      this._dummy.rotation.set(0, 0, 0);
+      this._dummy.updateMatrix();
+      this._focusNeighborMesh.setMatrixAt(instIdx, this._dummy.matrix);
+      instIdx++;
+    });
+    this._focusNeighborMesh.count   = instIdx;
+    this._focusNeighborMesh.instanceMatrix.needsUpdate = true;
+    this._focusNeighborMesh.visible = instIdx > 0;
+  }
+
+  /**
+   * Remove focus glow from all nodes.
+   */
+  clearFocus() {
+    this._focusedNodeId             = null;
+    this._focusCenterMesh.visible   = false;
+    this._focusNeighborMesh.visible = false;
+    if (this._onFocusCallback) this._onFocusCallback(null);
   }
 
   /**
@@ -279,10 +359,46 @@ export class NodeRenderer {
       this.scene.remove(this._highlightMesh);
       this._highlightMesh.material.dispose();
     }
+    if (this._focusCenterMesh) {
+      this.scene.remove(this._focusCenterMesh);
+      this._focusCenterMesh.material.dispose();
+    }
+    if (this._focusNeighborMesh) {
+      this.scene.remove(this._focusNeighborMesh);
+      this._focusNeighborMesh.material.dispose();
+    }
     this._geometry.dispose();
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
+
+  _buildFocusMeshes() {
+    // Focused center node — very bright white-gold emissive
+    const centerMat = new THREE.MeshStandardMaterial({
+      color:             0xffd700,
+      emissive:          0xffd700,
+      emissiveIntensity: 1.8,
+      roughness:         0.2,
+      metalness:         0.4,
+    });
+    this._focusCenterMesh = new THREE.InstancedMesh(this._geometry, centerMat, 1);
+    this._focusCenterMesh.visible     = false;
+    this._focusCenterMesh.renderOrder = 2;
+    this.scene.add(this._focusCenterMesh);
+
+    // Neighbor glow — softer cyan emissive, up to 200 instances
+    const neighborMat = new THREE.MeshStandardMaterial({
+      color:             0x00e5ff,
+      emissive:          0x00e5ff,
+      emissiveIntensity: 0.9,
+      roughness:         0.4,
+      metalness:         0.2,
+    });
+    this._focusNeighborMesh = new THREE.InstancedMesh(this._geometry, neighborMat, 200);
+    this._focusNeighborMesh.visible     = false;
+    this._focusNeighborMesh.renderOrder = 2;
+    this.scene.add(this._focusNeighborMesh);
+  }
 
   _buildHighlight() {
     const mat = new THREE.MeshStandardMaterial({

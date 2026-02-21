@@ -23,13 +23,13 @@ export class CameraController {
    * Disables OrbitControls during animation, re-enables when done.
    */
   focusNode(nodePosition) {
-    // Put camera 25 units away from node in the outward direction, 8 up
+    // Put camera 150 units away from node in the outward direction, 50 up
     const dir = nodePosition.clone().normalize();
     if (dir.lengthSq() < 0.0001) dir.set(0, 0, 1);
     this._targetPos
       .copy(nodePosition)
-      .addScaledVector(dir, 25)
-      .add(new THREE.Vector3(0, 8, 0));
+      .addScaledVector(dir, 150)
+      .add(new THREE.Vector3(0, 50, 0));
     this._targetLook.copy(nodePosition);
     this._isFocusing = true;
     this.controls.enabled = false;

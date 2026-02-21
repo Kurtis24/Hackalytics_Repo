@@ -32,7 +32,7 @@ export class SceneManager {
 
     // ── Camera ────────────────────────────────────────────────────────────
     this.camera = new THREE.PerspectiveCamera(60, w / h, 1, 40000);
-    this.camera.position.set(0, 2000, 4000);
+    this.camera.position.set(0, 800, 1500);
 
     // ── Lights (minimal per spec) ─────────────────────────────────────────
     // One directional light only — no shadows, no HDR, no additive blending
@@ -54,9 +54,11 @@ export class SceneManager {
 
     // ── Axes ──────────────────────────────────────────────────────────────
     this._axisLines = [];
+    this._axisLabels = [];
     this._buildAxes();
 
-    this._animationId = null;
+    this._animationId   = null;
+    this._allConnections = [];
     window.addEventListener('resize', this._onResize);
   }
 
@@ -65,6 +67,7 @@ export class SceneManager {
    * Call this once (or again to replace the dataset).
    */
   loadNodes(nodes, connections = []) {
+    this._allConnections = connections;
     this.nodeRenderer.initialize(nodes);
     this.nodeRenderer.loadConnections(connections);
     this.edgeRenderer.initialize(connections, this.nodeRenderer);
@@ -74,6 +77,25 @@ export class SceneManager {
     this.nodeRenderer._onFocusCallback = (nodeId) => {
       this.edgeRenderer.setFocusEdges(nodeId, this.nodeRenderer);
     };
+  }
+
+  /**
+   * Apply search: hide non-matching nodes and rebuild edges for visible nodes only.
+   * @param {number[]} indices — nodeIndex[] from NodeRenderer.search()
+   * @returns {number} match count
+   */
+  applySearch(indices) {
+    const count = this.nodeRenderer.applySearchResults(indices);
+    const visibleConns = this.nodeRenderer.filterConnectionsByVisibility(this._allConnections);
+    this.edgeRenderer.initialize(visibleConns, this.nodeRenderer);
+    return count;
+  }
+
+  /** Restore all nodes and edges. */
+  clearSearch() {
+    this.nodeRenderer.clearSearchResults();
+    this.nodeRenderer.clearFocus();
+    this.edgeRenderer.initialize(this._allConnections, this.nodeRenderer);
   }
 
   /** Start the render loop. */
@@ -105,6 +127,11 @@ export class SceneManager {
       geo.dispose();
       mat.dispose();
     });
+    this._axisLabels.forEach((sprite) => {
+      this.scene.remove(sprite);
+      sprite.material.map.dispose();
+      sprite.material.dispose();
+    });
     this.renderer.dispose();
   }
 
@@ -125,10 +152,10 @@ export class SceneManager {
       transparent: true,
     });
 
-    // Axis extents — match NodeRenderer scale (CONF/RISK: ±1000, profit: 80/%)
-    const X_MIN = -1100, X_MAX = 1100;  // confidence axis
-    const Y_MIN = -400,  Y_MAX = 800;   // profit axis  (≈ -5% to +10%)
-    const Z_MIN = -1100, Z_MAX = 1100;  // risk axis
+    // Axis extents — match NodeRenderer scale (CONF/RISK: ±500, profit: 40/%)
+    const X_MIN = -550, X_MAX = 550;   // confidence axis
+    const Y_MIN = -250, Y_MAX = 400;   // profit axis  (≈ -6% to +10%)
+    const Z_MIN = -550, Z_MAX = 550;   // risk axis
 
     const axes = [
       [new THREE.Vector3(X_MIN, 0, 0), new THREE.Vector3(X_MAX, 0, 0)],
@@ -142,6 +169,45 @@ export class SceneManager {
       this.scene.add(line);
       this._axisLines.push({ line, geo, mat });
     });
+
+    // Add axis labels
+    const labels = [
+      { text: 'Confidence', position: new THREE.Vector3(X_MAX + 80, 0, 0), color: 0xffffff },
+      { text: 'Profit', position: new THREE.Vector3(0, Y_MAX + 80, 0), color: 0xffffff },
+      { text: 'Risk', position: new THREE.Vector3(0, 0, Z_MAX + 80), color: 0xffffff },
+    ];
+
+    labels.forEach(({ text, position, color }) => {
+      const sprite = this._createTextSprite(text, color);
+      sprite.position.copy(position);
+      sprite.scale.set(100, 50, 1);
+      this.scene.add(sprite);
+      this._axisLabels.push(sprite);
+    });
+  }
+
+  _createTextSprite(text, color) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 256;
+
+    context.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+    context.font = 'bold 80px monospace';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(text, 256, 128);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.8,
+    });
+
+    return new THREE.Sprite(material);
   }
 
   _onResize() {
@@ -150,5 +216,6 @@ export class SceneManager {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    this.edgeRenderer.onResize(w, h);
   }
 }

@@ -1,0 +1,5 @@
+claude/
+
+# Backend (avoid re-adding if already tracked)
+Backend/venv/
+Backend/__pycache__/

@@ -1,132 +1,259 @@
+/* ────────────────────────────────────────────────────────────────
+   Product — Arbitrage Opportunities  (dark space aesthetic · Playfair Display)
+──────────────────────────────────────────────────────────────── */
+
 import { useState } from 'react'
 import { api } from '../services/api'
 
+const PF = { fontFamily: "'Playfair Display', Georgia, serif" }
+
+// ── Risk metadata ────────────────────────────────────────────
 function riskMeta(score) {
-  if (score <= 0.25) return { label: 'Low Risk',  bg: 'bg-green-100',  text: 'text-green-700',  bar: 'bg-green-500'  }
-  if (score <= 0.50) return { label: 'Moderate',  bg: 'bg-amber-100',  text: 'text-amber-700',  bar: 'bg-amber-400'  }
-  if (score <= 0.75) return { label: 'Elevated',  bg: 'bg-orange-100', text: 'text-orange-700', bar: 'bg-orange-500' }
-  return               { label: 'High Risk',  bg: 'bg-red-100',    text: 'text-red-700',    bar: 'bg-red-500'    }
+  if (score <= 0.25) return { label: 'Low Risk',  color: '#22c55e', glow: 'rgba(34,197,94,0.3)'  }
+  if (score <= 0.50) return { label: 'Moderate',  color: '#f59e0b', glow: 'rgba(245,158,11,0.3)' }
+  if (score <= 0.75) return { label: 'Elevated',  color: '#f97316', glow: 'rgba(249,115,22,0.3)' }
+  return               { label: 'High Risk',  color: '#ef4444', glow: 'rgba(239,68,68,0.3)'   }
 }
 
-function Bar({ value, colorClass }) {
+// ── Thin progress bar ────────────────────────────────────────
+function Bar({ value, color }) {
   return (
-    <div className="w-full bg-gray-100 rounded-full h-2">
-      <div
-        className={`h-2 rounded-full transition-all ${colorClass}`}
-        style={{ width: `${Math.round(value * 100)}%` }}
-      />
+    <div style={{
+      width: '100%',
+      height: 3,
+      borderRadius: 99,
+      background: 'rgba(255,255,255,0.08)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        height: '100%',
+        width: `${Math.round(value * 100)}%`,
+        background: color,
+        borderRadius: 99,
+        boxShadow: `0 0 6px 1px ${color}80`,
+        transition: 'width 0.5s ease',
+      }} />
     </div>
   )
 }
 
-function StatChip({ label, value, valueClass = 'text-gray-900' }) {
+// ── Summary stat chip ────────────────────────────────────────
+function StatChip({ label, value, color = '#fff' }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-5 py-3 flex flex-col items-center gap-0.5 shadow-sm">
-      <span className={`text-xl font-bold ${valueClass}`}>{value}</span>
-      <span className="text-xs text-gray-500 text-center">{label}</span>
+    <div style={{
+      background: 'rgba(255,255,255,0.04)',
+      border: '1px solid rgba(255,255,255,0.09)',
+      borderRadius: 14,
+      padding: '14px 22px',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 2,
+      minWidth: 110,
+    }}>
+      <span style={{ fontSize: '1.35rem', fontWeight: 700, color, lineHeight: 1 }}>{value}</span>
+      <span style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', textAlign: 'center' }}>{label}</span>
     </div>
   )
 }
 
+// ── Diagnostic pill ──────────────────────────────────────────
+function DiagPill({ label, value }) {
+  return (
+    <span style={{
+      fontSize: '0.7rem',
+      color: 'rgba(255,255,255,0.45)',
+      background: 'rgba(255,255,255,0.05)',
+      border: '1px solid rgba(255,255,255,0.08)',
+      borderRadius: 99,
+      padding: '2px 10px',
+      whiteSpace: 'nowrap',
+    }}>
+      {label}: <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{value}</strong>
+    </span>
+  )
+}
+
+// ── Opportunity card ─────────────────────────────────────────
 function OpportunityCard({ opp }) {
-  const risk = riskMeta(opp.risk_score)
-  const marketLabel = opp.market_type.replace(/_/g, ' ')
-  const dateStr = new Date(opp.date).toLocaleDateString(undefined, {
+  const risk      = riskMeta(opp.risk_score)
+  const marketLbl = opp.market_type.replace(/_/g, ' ')
+  const dateStr   = new Date(opp.date).toLocaleDateString(undefined, {
     month: 'short', day: 'numeric', year: 'numeric',
   })
+  const binding = opp.market_ceiling <= opp.kelly_stake ? 'ceiling binds' : 'kelly binds'
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-      {/* Card header */}
-      <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-4 border-b border-gray-100">
+    <div style={{
+      background: 'linear-gradient(145deg, #0c1a35 0%, #080f20 100%)',
+      border: '1px solid rgba(60,120,255,0.18)',
+      borderRadius: 20,
+      overflow: 'hidden',
+      boxShadow: '0 4px 40px rgba(0,0,0,0.4)',
+    }}>
+
+      {/* Header */}
+      <div style={{
+        padding: '20px 24px 16px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'flex-start',
+        gap: 12,
+      }}>
         <div>
-          <div className="flex gap-2 mb-2">
-            <span className="text-xs font-semibold uppercase tracking-wide bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded">
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              background: 'rgba(99,102,241,0.2)',
+              color: '#818cf8',
+              padding: '2px 8px',
+              borderRadius: 6,
+            }}>
               {opp.category}
             </span>
-            <span className="text-xs font-semibold uppercase tracking-wide bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-              {marketLabel}
+            <span style={{
+              fontSize: '0.68rem',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.08em',
+              background: 'rgba(255,255,255,0.07)',
+              color: 'rgba(255,255,255,0.5)',
+              padding: '2px 8px',
+              borderRadius: 6,
+            }}>
+              {marketLbl}
             </span>
           </div>
-          <p className="text-lg font-bold text-gray-900">
-            {opp.home_team} <span className="text-gray-400 font-normal">vs</span> {opp.away_team}
+          <p style={{ ...PF, fontSize: '1.05rem', fontWeight: 700, color: '#fff', margin: 0 }}>
+            {opp.home_team}{' '}
+            <span style={{ color: 'rgba(255,255,255,0.3)', fontWeight: 400 }}>vs</span>{' '}
+            {opp.away_team}
           </p>
-          <p className="text-xs text-gray-400 mt-0.5">{dateStr}</p>
+          <p style={{ ...PF, fontSize: '0.72rem', fontStyle: 'italic', color: 'rgba(255,255,255,0.3)', marginTop: 3 }}>{dateStr}</p>
         </div>
-        <span className={`shrink-0 text-xs font-semibold px-3 py-1 rounded-full ${risk.bg} ${risk.text}`}>
+        <span style={{
+          flexShrink: 0,
+          fontSize: '0.72rem',
+          fontWeight: 600,
+          padding: '4px 12px',
+          borderRadius: 999,
+          background: `${risk.glow}`,
+          color: risk.color,
+          border: `1px solid ${risk.color}50`,
+        }}>
           {risk.label}
         </span>
       </div>
 
       {/* Metrics */}
-      <div className="px-6 py-4 grid grid-cols-2 gap-x-8 gap-y-3">
-        <div>
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Profit Score</span>
-            <span className="font-medium text-indigo-600">{(opp.profit_score * 100).toFixed(1)}%</span>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '14px 24px',
+        padding: '18px 24px',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        {[
+          { label: 'Profit Score',  value: opp.profit_score,  color: '#818cf8' },
+          { label: 'Confidence',    value: opp.confidence,    color: '#2dd4bf' },
+          { label: 'Risk Score',    value: opp.risk_score,    color: risk.color },
+        ].map(({ label, value, color }) => (
+          <div key={label}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+              <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)' }}>{label}</span>
+              <span style={{ fontSize: '0.7rem', fontWeight: 600, color }}>{(value * 100).toFixed(1)}%</span>
+            </div>
+            <Bar value={value} color={color} />
           </div>
-          <Bar value={opp.profit_score} colorClass="bg-indigo-500" />
-        </div>
-        <div>
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Confidence</span>
-            <span className="font-medium text-teal-600">{(opp.confidence * 100).toFixed(1)}%</span>
-          </div>
-          <Bar value={opp.confidence} colorClass="bg-teal-500" />
-        </div>
-        <div>
-          <div className="flex justify-between text-xs text-gray-500 mb-1">
-            <span>Risk Score</span>
-            <span className={`font-medium ${risk.text}`}>{(opp.risk_score * 100).toFixed(1)}%</span>
-          </div>
-          <Bar value={opp.risk_score} colorClass={risk.bar} />
-        </div>
+        ))}
       </div>
 
-      {/* Sportsbook table */}
-      <div className="px-6 pb-4">
-        <table className="w-full text-sm">
+      {/* Sportsbooks */}
+      <div style={{ padding: '14px 24px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr className="text-xs text-gray-400 border-b border-gray-100">
-              <th className="text-left pb-1 font-medium">Book</th>
-              <th className="text-right pb-1 font-medium">Odds</th>
-              <th className="text-right pb-1 font-medium">Stake</th>
+            <tr>
+              {['Book', 'Odds', 'Stake'].map(h => (
+                <th key={h} style={{
+                  textAlign: h === 'Book' ? 'left' : 'right',
+                  fontSize: '0.68rem',
+                  color: 'rgba(255,255,255,0.3)',
+                  fontWeight: 500,
+                  paddingBottom: 6,
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                }}>
+                  {h}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {opp.sportsbooks.map((sb) => (
-              <tr key={sb.name} className="border-b border-gray-50 last:border-0">
-                <td className="py-1.5 font-medium text-gray-800">{sb.name}</td>
-                <td className="py-1.5 text-right text-gray-600">
+            {opp.sportsbooks.map(sb => (
+              <tr key={sb.name}>
+                <td style={{ padding: '7px 0', fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>{sb.name}</td>
+                <td style={{ padding: '7px 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.55)', textAlign: 'right' }}>
                   {sb.odds > 0 ? `+${sb.odds}` : sb.odds}
                 </td>
-                <td className="py-1.5 text-right text-gray-600">${sb.stake.toLocaleString()}</td>
+                <td style={{ padding: '7px 0', fontSize: '0.82rem', color: 'rgba(255,255,255,0.55)', textAlign: 'right' }}>
+                  ${sb.stake.toLocaleString()}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
 
-      {/* Footer: totals */}
-      <div className="flex items-center justify-between px-6 py-3 bg-gray-50 border-t border-gray-100">
-        <span className="text-sm text-gray-500">
-          Total Stake: <span className="font-semibold text-gray-800">${opp.total_stake.toLocaleString()}</span>
+      {/* Diagnostics row */}
+      <div style={{
+        padding: '10px 24px',
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 6,
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}>
+        <DiagPill label="line mvt"  value={opp.line_movement?.toFixed(4) ?? '—'} />
+        <DiagPill label="ceiling"   value={`$${opp.market_ceiling?.toLocaleString() ?? '—'}`} />
+        <DiagPill label="kelly"     value={`$${opp.kelly_stake?.toLocaleString() ?? '—'}`} />
+        <DiagPill label="constraint" value={binding} />
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '14px 24px',
+        background: 'rgba(255,255,255,0.02)',
+      }}>
+        <span style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.4)' }}>
+          Volume:{' '}
+          <strong style={{ color: '#fff' }}>
+            ${(opp.optimal_volume ?? opp.total_stake ?? 0).toLocaleString()}
+          </strong>
         </span>
-        <span className="text-sm">
+        <span style={{ fontSize: '0.9rem' }}>
           Profit:{' '}
-          <span className={`font-bold text-base ${opp.guaranteed_profit > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+          <strong style={{
+            fontSize: '1rem',
+            color: opp.guaranteed_profit > 0 ? '#22c55e' : 'rgba(255,255,255,0.35)',
+          }}>
             ${opp.guaranteed_profit.toLocaleString()}
-          </span>
+          </strong>
         </span>
       </div>
     </div>
   )
 }
 
+// ── Page ─────────────────────────────────────────────────────
 export default function Arbitrage() {
-  const [status, setStatus]   = useState('idle')
+  const [status,  setStatus]  = useState('idle')
   const [results, setResults] = useState([])
-  const [error, setError]     = useState(null)
+  const [error,   setError]   = useState(null)
 
   async function handleExecute() {
     setStatus('loading')
@@ -141,60 +268,118 @@ export default function Arbitrage() {
     }
   }
 
-  const confirmedArbs = results.filter((o) => o.profit_score > 0).length
-  const valueBets     = results.length - confirmedArbs
+  const confirmedArbs = results.filter(o => o.profit_score > 0).length
   const totalProfit   = results.reduce((s, o) => s + o.guaranteed_profit, 0)
+  const totalVolume   = results.reduce((s, o) => s + (o.optimal_volume ?? o.total_stake ?? 0), 0)
 
   return (
-    <main className="min-h-screen bg-gray-50 px-4 py-10">
-      <div className="max-w-3xl mx-auto">
+    <main style={{
+      background: '#000',
+      minHeight: '100vh',
+      padding: '100px 24px 80px',
+    }}>
+      <div style={{ maxWidth: 720, margin: '0 auto' }}>
 
-        {/* Page header */}
-        <div className="mb-8 flex items-center justify-between gap-4 flex-wrap">
+        {/* ── Page header ── */}
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-end',
+          gap: 16,
+          marginBottom: 36,
+          flexWrap: 'wrap',
+        }}>
           <div>
-            <h1 className="text-3xl font-extrabold text-gray-900">Arbitrage Opportunities</h1>
-            <p className="text-sm text-gray-400 mt-1">ML-scored betting opportunities across markets</p>
+            <h1 style={{
+              ...PF,
+              fontSize: 'clamp(1.6rem, 4vw, 2.2rem)',
+              fontWeight: 700,
+              fontStyle: 'italic',
+              color: '#fff',
+              margin: 0,
+              letterSpacing: '-0.01em',
+            }}>
+              Arbitrage Opportunities
+            </h1>
+            <p style={{ ...PF, fontSize: '0.82rem', color: 'rgba(255,255,255,0.35)', marginTop: 6, fontStyle: 'italic' }}>
+              ML-scored markets · Volume-optimized stakes
+            </p>
           </div>
+
           <button
             onClick={handleExecute}
             disabled={status === 'loading'}
-            className="px-8 py-3 rounded-lg bg-indigo-600 text-white font-semibold tracking-wide hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="btn-dark"
+            style={{
+              ...PF,
+              opacity: status === 'loading' ? 0.5 : 1,
+              cursor: status === 'loading' ? 'not-allowed' : 'pointer',
+            }}
           >
-            {status === 'loading' ? 'Running…' : results.length > 0 || status === 'done' ? 'Refresh' : 'Execute'}
+            {status === 'loading' ? 'Scanning…' : results.length > 0 ? 'Refresh' : 'Execute'}
           </button>
         </div>
 
-        {/* Error */}
+        {/* ── Error ── */}
         {status === 'error' && (
-          <p className="mb-6 text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+          <div style={{
+            marginBottom: 24,
+            padding: '12px 18px',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.25)',
+            borderRadius: 12,
+            color: '#fca5a5',
+            fontSize: '0.82rem',
+          }}>
             Error: {error}
-          </p>
-        )}
-
-        {/* Summary bar */}
-        {status === 'done' && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-            <StatChip label="Opportunities"  value={results.length} />
-            <StatChip label="Confirmed Arbs" value={confirmedArbs}  valueClass="text-green-600" />
-            <StatChip label="Value Bets"     value={valueBets}      valueClass="text-amber-600" />
-            <StatChip label="Expected Profit" value={`$${totalProfit.toLocaleString()}`} valueClass="text-green-600" />
           </div>
         )}
 
-        {/* Cards */}
+        {/* ── Summary chips ── */}
+        {status === 'done' && (
+          <div style={{
+            display: 'flex',
+            gap: 12,
+            flexWrap: 'wrap',
+            marginBottom: 36,
+          }}>
+            <StatChip label="Opportunities"   value={results.length} />
+            <StatChip label="Confirmed Arbs"  value={confirmedArbs}  color="#22c55e" />
+            <StatChip label="Value Bets"      value={results.length - confirmedArbs} color="#f59e0b" />
+            <StatChip label="Capital Required" value={`$${totalVolume.toLocaleString()}`} color="#818cf8" />
+            <StatChip label="Expected Profit"  value={`$${totalProfit.toLocaleString()}`} color="#22c55e" />
+          </div>
+        )}
+
+        {/* ── Cards ── */}
         {results.length > 0 && (
-          <div className="space-y-5">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
             {results.map((opp, i) => (
               <OpportunityCard key={`${opp.market_type}-${i}`} opp={opp} />
             ))}
           </div>
         )}
 
-        {/* Empty state */}
+        {/* ── Empty / idle states ── */}
         {status === 'done' && results.length === 0 && (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-lg font-medium">No opportunities found</p>
-            <p className="text-sm mt-1">No markets passed the confidence threshold.</p>
+          <div style={{
+            textAlign: 'center',
+            padding: '80px 0',
+            color: 'rgba(255,255,255,0.25)',
+          }}>
+            <p style={{ fontSize: '1.05rem', fontWeight: 500 }}>No opportunities found</p>
+            <p style={{ fontSize: '0.8rem', marginTop: 6 }}>No markets passed the confidence threshold.</p>
+          </div>
+        )}
+
+        {status === 'idle' && (
+          <div style={{
+            textAlign: 'center',
+            padding: '80px 0',
+            color: 'rgba(255,255,255,0.2)',
+            fontSize: '0.85rem',
+          }}>
+            Press <strong style={{ color: 'rgba(255,255,255,0.45)' }}>Execute</strong> to scan for arbitrage opportunities.
           </div>
         )}
       </div>

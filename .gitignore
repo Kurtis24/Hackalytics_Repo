@@ -1,6 +1,7 @@
-.claude/
-node_modules/
-package-lock.json
+.env
+.DS_Store
+data/
+claude/
 
 # Backend (avoid re-adding if already tracked)
 Backend/venv/

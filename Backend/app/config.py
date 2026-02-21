@@ -87,5 +87,4 @@ class Settings(BaseSettings):
 settings = Settings()
 settings.validate_risk_weights()
 
-settings = Settings()
 print(settings)

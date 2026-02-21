@@ -1,0 +1,516 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Hackalytics Sportsbook Data Pipeline — S3, SQS DLQ, ECR, ECS Fargate Spot,
+  EventBridge cron, DLQ retry Lambda, SNS for Databricks Auto Loader.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [prod, staging]
+  DatabricksAccountId:
+    Type: String
+    Default: ""
+    Description: Databricks AWS account ID for cross-account S3 access (leave empty to skip).
+
+Conditions:
+  HasDatabricksAccount: !Not [!Equals [!Ref DatabricksAccountId, ""]]
+
+Resources:
+  # ========================================================================
+  # S3 Bucket
+  # ========================================================================
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "hackalytics-sportsbook-data-${Environment}"
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+      NotificationConfiguration:
+        TopicConfigurations:
+          - Event: "s3:ObjectCreated:*"
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: raw/
+                  - Name: suffix
+                    Value: .parquet
+            Topic: !Ref AutoLoaderSNSTopic
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  DataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Condition: HasDatabricksAccount
+    Properties:
+      Bucket: !Ref DataBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DatabricksReadAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${DatabricksAccountId}:root"
+            Action:
+              - s3:GetObject
+              - s3:GetObjectVersion
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource:
+              - !GetAtt DataBucket.Arn
+              - !Sub "${DataBucket.Arn}/*"
+
+  # ========================================================================
+  # SNS Topic for S3 → Auto Loader notifications
+  # ========================================================================
+  AutoLoaderSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "sportsbook-s3-notifications-${Environment}"
+
+  AutoLoaderSNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref AutoLoaderSNSTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowS3Publish
+            Effect: Allow
+            Principal:
+              Service: s3.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AutoLoaderSNSTopic
+            Condition:
+              ArnLike:
+                aws:SourceArn: !GetAtt DataBucket.Arn
+
+  # ========================================================================
+  # Secrets Manager
+  # ========================================================================
+  RapidAPIKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub "sportsbook/rapidapi-key-${Environment}"
+      Description: RapidAPI key for Sportsbook API
+      SecretString: '{"RAPIDAPI_KEY":"REPLACE_ME"}'
+
+  # ========================================================================
+  # SQS Dead Letter Queue + Poison Queue
+  # ========================================================================
+  PoisonQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sportsbook-dlq-poison-${Environment}"
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "sportsbook-dlq-${Environment}"
+      MessageRetentionPeriod: 1209600  # 14 days
+      VisibilityTimeout: 300
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PoisonQueue.Arn
+        maxReceiveCount: 3
+
+  # ========================================================================
+  # ECR Repository
+  # ========================================================================
+  PipelineECR:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "sportsbook-pipeline-${Environment}"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 5 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 5
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  # ========================================================================
+  # CloudWatch Log Group
+  # ========================================================================
+  PipelineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/ecs/sportsbook-pipeline-${Environment}"
+      RetentionInDays: 30
+
+  # ========================================================================
+  # IAM Roles
+  # ========================================================================
+
+  # ECS Task Execution Role (pull images, read secrets, write logs)
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "sportsbook-ecs-exec-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref RapidAPIKeySecret
+
+  # ECS Task Role (S3 write, SQS send)
+  ECSTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "sportsbook-ecs-task-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3Write
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt DataBucket.Arn
+                  - !Sub "${DataBucket.Arn}/*"
+        - PolicyName: SQSSend
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:SendMessage
+                Resource: !GetAtt DeadLetterQueue.Arn
+
+  # EventBridge → ECS role
+  EventBridgeECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "sportsbook-eventbridge-ecs-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: RunTask
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: ecs:RunTask
+                Resource: !Ref PipelineTaskDefinition
+                Condition:
+                  ArnLike:
+                    ecs:cluster: !GetAtt ECSCluster.Arn
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource:
+                  - !GetAtt ECSTaskExecutionRole.Arn
+                  - !GetAtt ECSTaskRole.Arn
+
+  # DLQ Retry Lambda role
+  DLQRetryLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "sportsbook-dlq-retry-${Environment}"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SQSReadDelete
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt DeadLetterQueue.Arn
+        - PolicyName: S3Write
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub "${DataBucket.Arn}/*"
+        - PolicyName: SecretsRead
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref RapidAPIKeySecret
+
+  # ========================================================================
+  # ECS Cluster
+  # ========================================================================
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "sportsbook-${Environment}"
+      CapacityProviders:
+        - FARGATE_SPOT
+        - FARGATE
+      DefaultCapacityProviderStrategy:
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 4
+          Base: 0
+        - CapacityProvider: FARGATE
+          Weight: 1
+          Base: 0
+
+  # ========================================================================
+  # ECS Task Definition
+  # ========================================================================
+  PipelineTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "sportsbook-pipeline-${Environment}"
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: "256"
+      Memory: "512"
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt ECSTaskRole.Arn
+      ContainerDefinitions:
+        - Name: pipeline
+          Image: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${PipelineECR}:latest"
+          Essential: true
+          Environment:
+            - Name: S3_BUCKET
+              Value: !Ref DataBucket
+            - Name: S3_PREFIX
+              Value: raw
+            - Name: SQS_DLQ_URL
+              Value: !Ref DeadLetterQueue
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: RAPIDAPI_HOST
+              Value: sportsbook-api2.p.rapidapi.com
+          Secrets:
+            - Name: RAPIDAPI_KEY
+              ValueFrom: !Sub "${RapidAPIKeySecret}:RAPIDAPI_KEY::"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref PipelineLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: pipeline
+
+  # ========================================================================
+  # EventBridge — Daily cron, 4 sports
+  # ========================================================================
+  DailyCronRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "sportsbook-daily-${Environment}"
+      Description: "Daily pipeline run at 06:00 UTC"
+      ScheduleExpression: "cron(0 6 * * ? *)"
+      State: ENABLED
+      Targets:
+        - Id: NBA
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt EventBridgeECSRole.Arn
+          EcsParameters:
+            TaskDefinitionArn: !Ref PipelineTaskDefinition
+            TaskCount: 1
+            LaunchType: FARGATE
+            CapacityProviderStrategy:
+              - CapacityProvider: FARGATE_SPOT
+                Weight: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                Subnets:
+                  - !Ref SubnetId
+            PlatformVersion: LATEST
+          Input: '{"containerOverrides":[{"name":"pipeline","command":["--sport","NBA"]}]}'
+        - Id: NFL
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt EventBridgeECSRole.Arn
+          EcsParameters:
+            TaskDefinitionArn: !Ref PipelineTaskDefinition
+            TaskCount: 1
+            LaunchType: FARGATE
+            CapacityProviderStrategy:
+              - CapacityProvider: FARGATE_SPOT
+                Weight: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                Subnets:
+                  - !Ref SubnetId
+            PlatformVersion: LATEST
+          Input: '{"containerOverrides":[{"name":"pipeline","command":["--sport","NFL"]}]}'
+        - Id: MLB
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt EventBridgeECSRole.Arn
+          EcsParameters:
+            TaskDefinitionArn: !Ref PipelineTaskDefinition
+            TaskCount: 1
+            LaunchType: FARGATE
+            CapacityProviderStrategy:
+              - CapacityProvider: FARGATE_SPOT
+                Weight: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                Subnets:
+                  - !Ref SubnetId
+            PlatformVersion: LATEST
+          Input: '{"containerOverrides":[{"name":"pipeline","command":["--sport","MLB"]}]}'
+        - Id: NHL
+          Arn: !GetAtt ECSCluster.Arn
+          RoleArn: !GetAtt EventBridgeECSRole.Arn
+          EcsParameters:
+            TaskDefinitionArn: !Ref PipelineTaskDefinition
+            TaskCount: 1
+            LaunchType: FARGATE
+            CapacityProviderStrategy:
+              - CapacityProvider: FARGATE_SPOT
+                Weight: 1
+            NetworkConfiguration:
+              AwsVpcConfiguration:
+                AssignPublicIp: ENABLED
+                Subnets:
+                  - !Ref SubnetId
+            PlatformVersion: LATEST
+          Input: '{"containerOverrides":[{"name":"pipeline","command":["--sport","NHL"]}]}'
+
+  # Subnet parameter (user must supply their VPC subnet)
+  SubnetId:
+    Type: AWS::SSM::Parameter::Value<String>
+    Default: /sportsbook/subnet-id
+
+  # ========================================================================
+  # Lambda — DLQ Retry (every 6 hours)
+  # ========================================================================
+  DLQRetryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "sportsbook-dlq-retry-${Environment}"
+      Runtime: python3.12
+      Handler: Backend.scripts.dlq_retry.handler
+      Timeout: 300
+      MemorySize: 256
+      Role: !GetAtt DLQRetryLambdaRole.Arn
+      Code:
+        S3Bucket: !Sub "sportsbook-lambda-code-${Environment}"
+        S3Key: dlq-retry/latest.zip
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref DataBucket
+          S3_PREFIX: raw
+          SQS_DLQ_URL: !Ref DeadLetterQueue
+          AWS_REGION_NAME: !Ref AWS::Region
+          RAPIDAPI_HOST: sportsbook-api2.p.rapidapi.com
+          RAPIDAPI_KEY_SECRET_ARN: !Ref RapidAPIKeySecret
+
+  DLQRetrySchedule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "sportsbook-dlq-retry-${Environment}"
+      Description: "Retry DLQ messages every 6 hours"
+      ScheduleExpression: "rate(6 hours)"
+      State: ENABLED
+      Targets:
+        - Id: DLQRetry
+          Arn: !GetAtt DLQRetryFunction.Arn
+
+  DLQRetryPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DLQRetryFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DLQRetrySchedule.Arn
+
+# ========================================================================
+# Outputs
+# ========================================================================
+Outputs:
+  S3BucketName:
+    Value: !Ref DataBucket
+    Description: S3 bucket for pipeline output
+
+  S3BucketArn:
+    Value: !GetAtt DataBucket.Arn
+
+  DLQUrl:
+    Value: !Ref DeadLetterQueue
+    Description: SQS dead-letter queue URL
+
+  ECRRepositoryUri:
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${PipelineECR}"
+    Description: ECR repository URI for docker push
+
+  ECSClusterName:
+    Value: !Ref ECSCluster
+
+  TaskDefinitionArn:
+    Value: !Ref PipelineTaskDefinition
+
+  SNSTopicArn:
+    Value: !Ref AutoLoaderSNSTopic
+    Description: SNS topic ARN for Databricks Auto Loader subscription
+
+  DLQRetryFunctionArn:
+    Value: !GetAtt DLQRetryFunction.Arn

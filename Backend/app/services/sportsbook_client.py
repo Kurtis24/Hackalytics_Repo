@@ -143,21 +143,22 @@ class SportsbookAPIClient:
     async def get_market_outcomes(
         self,
         market_key: str,
-        source: str | None = None,
+        sources: list[str] | None = None,
         is_live: bool | None = None,
     ) -> list[dict]:
         """Fetch all historical odds for a market.
 
         Args:
             market_key: The market identifier.
-            source: Optional sportsbook source filter.
+            sources: Optional list of sportsbook source filters.
             is_live: Optional filter for live vs pre-game odds.
         """
-        params: dict = {}
-        if source is not None:
-            params["source"] = source
+        params: list[tuple[str, str]] = []
+        if sources:
+            for s in sources:
+                params.append(("source", s))
         if is_live is not None:
-            params["isLive"] = str(is_live).lower()
+            params.append(("isLive", str(is_live).lower()))
 
         data = await self._get(
             f"/v0/markets/{market_key}/outcomes",
@@ -167,16 +168,32 @@ class SportsbookAPIClient:
             return data.get("data", data.get("outcomes", []))
         return data
 
+    @staticmethod
+    def _flatten_grouped_outcomes(data: dict | list) -> list[dict]:
+        """Flatten the {source: [outcome, ...]} structure returned by
+        opening/closing endpoints into a flat list of outcome dicts."""
+        if isinstance(data, list):
+            return data
+        # Dig into {"market": {"outcomes": {source: [...]}}}
+        market = data.get("market", data)
+        outcomes = market.get("outcomes", {})
+        if isinstance(outcomes, list):
+            return outcomes
+        # outcomes is a dict keyed by source name
+        flat: list[dict] = []
+        for source_outcomes in outcomes.values():
+            if isinstance(source_outcomes, list):
+                flat.extend(source_outcomes)
+            elif isinstance(source_outcomes, dict):
+                flat.append(source_outcomes)
+        return flat
+
     async def get_opening_odds(self, market_key: str) -> list[dict]:
         """Fetch opening odds per sportsbook for a market."""
         data = await self._get(f"/v1/markets/{market_key}/outcomes/opening")
-        if isinstance(data, dict):
-            return data.get("data", data.get("outcomes", []))
-        return data
+        return self._flatten_grouped_outcomes(data)
 
     async def get_closing_odds(self, market_key: str) -> list[dict]:
         """Fetch closing odds per sportsbook for a market."""
         data = await self._get(f"/v1/markets/{market_key}/outcomes/closing")
-        if isinstance(data, dict):
-            return data.get("data", data.get("outcomes", []))
-        return data
+        return self._flatten_grouped_outcomes(data)

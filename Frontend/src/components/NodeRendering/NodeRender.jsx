@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import * as THREE from 'three';
 import { SceneManager } from './SceneManager.js';
 import { generateMockNodes, generateConnections } from './mockData.js';
 
@@ -76,38 +75,6 @@ export default function NodeRender() {
     if (e.key === 'Enter') handleSearch();
   }, [handleSearch]);
 
-  // ── Axis label projection ────────────────────────────────────────────────────
-  const AXIS_LABELS = [
-    { pos: [1200,    0,    0], text: 'X', sub: 'Confidence', color: '#a0a8ff' },
-    { pos: [0,     920,    0], text: 'Y', sub: 'Profit',     color: '#39ff14' },
-    { pos: [0,       0, -1200], text: 'Z', sub: 'Risk',       color: '#ff6b6b' },
-  ];
-  const labelRefs = useRef([null, null, null]);
-
-  useEffect(() => {
-    if (!ready || !managerRef.current) return;
-    const { camera, canvas } = managerRef.current;
-    const vec = new THREE.Vector3();
-    let rafId;
-
-    const update = () => {
-      rafId = requestAnimationFrame(update);
-      const w = canvas.clientWidth;
-      const h = canvas.clientHeight;
-      AXIS_LABELS.forEach(({ pos }, i) => {
-        const el = labelRefs.current[i];
-        if (!el) return;
-        vec.set(...pos).project(camera);
-        if (vec.z > 1) { el.style.display = 'none'; return; }
-        el.style.display = 'block';
-        el.style.left = `${(vec.x * 0.5 + 0.5) * w}px`;
-        el.style.top  = `${(-vec.y * 0.5 + 0.5) * h}px`;
-      });
-    };
-    update();
-    return () => cancelAnimationFrame(rafId);
-  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // ── Styles ──────────────────────────────────────────────────────────────────
   const inputStyle = {
     background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.15)',
@@ -141,29 +108,6 @@ export default function NodeRender() {
 
       <canvas ref={canvasRef}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
-
-      {/* ── Axis labels (3D-projected) ──────────────────────────────────────── */}
-      {ready && AXIS_LABELS.map(({ text, sub, color }, i) => (
-        <div
-          key={text}
-          ref={el => { labelRefs.current[i] = el; }}
-          style={{
-            position: 'absolute', pointerEvents: 'none', userSelect: 'none',
-            transform: 'translate(-50%, -50%)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center',
-            lineHeight: 1.1,
-          }}
-        >
-          <span style={{
-            fontFamily: 'monospace', fontSize: 18, fontWeight: 'bold',
-            color, textShadow: '0 0 8px rgba(0,0,0,1), 0 0 2px rgba(0,0,0,1)',
-          }}>{text}</span>
-          <span style={{
-            fontFamily: 'monospace', fontSize: 9, color: 'rgba(255,255,255,0.5)',
-            textShadow: '0 0 6px rgba(0,0,0,1)',
-          }}>{sub}</span>
-        </div>
-      ))}
 
       {/* ── Search panel ────────────────────────────────────────────────────── */}
       {ready && (

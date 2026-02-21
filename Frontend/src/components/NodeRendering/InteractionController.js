@@ -19,13 +19,19 @@ export class InteractionController {
 
     this._tooltip = this._createTooltip();
 
+    // Track mouse down/up positions to detect drag vs click
+    this._mouseDownPos = null;
+    this._dragThreshold = 5;
+
     // Bind once so removeEventListener can match the same reference
     this._onMouseMove  = this._onMouseMove.bind(this);
-    this._onClick      = this._onClick.bind(this);
+    this._onMouseDown  = this._onMouseDown.bind(this);
+    this._onMouseUp    = this._onMouseUp.bind(this);
     this._onMouseLeave = this._onMouseLeave.bind(this);
 
     domElement.addEventListener('mousemove',  this._onMouseMove);
-    domElement.addEventListener('click',      this._onClick);
+    domElement.addEventListener('mousedown',  this._onMouseDown);
+    domElement.addEventListener('mouseup',    this._onMouseUp);
     domElement.addEventListener('mouseleave', this._onMouseLeave);
   }
 
@@ -39,7 +45,8 @@ export class InteractionController {
 
   dispose() {
     this.domElement.removeEventListener('mousemove',  this._onMouseMove);
-    this.domElement.removeEventListener('click',      this._onClick);
+    this.domElement.removeEventListener('mousedown',  this._onMouseDown);
+    this.domElement.removeEventListener('mouseup',    this._onMouseUp);
     this.domElement.removeEventListener('mouseleave', this._onMouseLeave);
     if (this._tooltip?.parentNode) {
       document.body.removeChild(this._tooltip);
@@ -115,16 +122,29 @@ export class InteractionController {
     this._tooltip.style.top     = `${event.clientY - 8}px`;
   }
 
-  _onClick(event) {
-    this._updateMouse(event);
-    const nodeIndex = this._raycast();
-    if (nodeIndex === null) {
-      // Click on empty space — clear any active focus glow
-      this.nodeRenderer.clearFocus();
-      return;
+  _onMouseDown(event) {
+    this._mouseDownPos = { x: event.clientX, y: event.clientY };
+  }
+
+  _onMouseUp(event) {
+    if (!this._mouseDownPos) return;
+
+    const dx = event.clientX - this._mouseDownPos.x;
+    const dy = event.clientY - this._mouseDownPos.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance < this._dragThreshold) {
+      this._updateMouse(event);
+      const nodeIndex = this._raycast();
+      if (nodeIndex === null) {
+        this.nodeRenderer.clearFocus();
+      } else {
+        const { nodeId } = this.nodeRenderer.getNodeData(nodeIndex);
+        this.nodeRenderer.focusNode(nodeId);
+      }
     }
-    const { nodeId } = this.nodeRenderer.getNodeData(nodeIndex);
-    this.nodeRenderer.focusNode(nodeId);
+
+    this._mouseDownPos = null;
   }
 
   _onMouseLeave() {

@@ -36,7 +36,7 @@ export class EdgeRenderer {
 
     // LineDashedMaterial requires computeLineDistances() to work
     const material = new THREE.LineDashedMaterial({
-      color:       0x2a5a7a,
+      color:       0x888888,
       dashSize:    12,
       gapSize:     20,
       opacity:     0.35,

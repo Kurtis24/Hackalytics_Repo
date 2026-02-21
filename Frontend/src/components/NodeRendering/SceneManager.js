@@ -52,6 +52,10 @@ export class SceneManager {
       canvas,
     );
 
+    // ── Axes ──────────────────────────────────────────────────────────────
+    this._axisLines = [];
+    this._buildAxes();
+
     this._animationId = null;
     window.addEventListener('resize', this._onResize);
   }
@@ -96,10 +100,49 @@ export class SceneManager {
     this.edgeRenderer.dispose();
     this.nodeRenderer.dispose();
     this.cameraController.dispose();
+    this._axisLines.forEach(({ line, geo, mat }) => {
+      this.scene.remove(line);
+      geo.dispose();
+      mat.dispose();
+    });
     this.renderer.dispose();
   }
 
   // ── Private ──────────────────────────────────────────────────────────────
+
+  /**
+   * Draw white X / Y / Z axes spanning the full node space, with tick marks.
+   *
+   * World-space mapping (from NodeRenderer constants):
+   *   confidence ∈ [0,1]  → X ∈ [-2000, 2000]   (CONF_SCALE=4000, CONF_OFFSET=-2000)
+   *   profit (%)          → Y  (200 world-units per %)
+   *   risk       ∈ [0,1]  → Z ∈ [-2000, 2000]
+   */
+  _buildAxes() {
+    const mat = new THREE.LineBasicMaterial({
+      color:       0xffffff,
+      opacity:     0.25,
+      transparent: true,
+    });
+
+    // Axis extents — match NodeRenderer scale (CONF/RISK: ±1000, profit: 80/%)
+    const X_MIN = -1100, X_MAX = 1100;  // confidence axis
+    const Y_MIN = -400,  Y_MAX = 800;   // profit axis  (≈ -5% to +10%)
+    const Z_MIN = -1100, Z_MAX = 1100;  // risk axis
+
+    const axes = [
+      [new THREE.Vector3(X_MIN, 0, 0), new THREE.Vector3(X_MAX, 0, 0)],
+      [new THREE.Vector3(0, Y_MIN, 0), new THREE.Vector3(0, Y_MAX, 0)],
+      [new THREE.Vector3(0, 0, Z_MIN), new THREE.Vector3(0, 0, Z_MAX)],
+    ];
+
+    axes.forEach(([start, end]) => {
+      const geo  = new THREE.BufferGeometry().setFromPoints([start, end]);
+      const line = new THREE.Line(geo, mat);
+      this.scene.add(line);
+      this._axisLines.push({ line, geo, mat });
+    });
+  }
 
   _onResize() {
     const w = this.canvas.clientWidth  || window.innerWidth;

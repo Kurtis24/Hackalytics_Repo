@@ -1,453 +1,181 @@
-# 3D Arbitrage Node Graph Renderer
-## Unified Mac-Optimized Implementation Specification (For Claude / Cursor)
+# NodeRendering — Claude Context README
+
+**Last updated:** Session where axes, edge colours, and node scaling were tuned.
+Read this before touching anything in this directory.
 
 ---
 
+## What This Is
 
-# Objective
-
-Build a **high-performance 3D node graph visualization system** using **Three.js (WebGL2)** optimized specifically for **macOS (Apple Silicon: M1/M2/M3 GPUs)**.
-
-This renderer must:
-
-- Render **20,000+ nodes at 60 FPS**
-- Be architected to scale significantly beyond that
-- Use GPU instancing properly
-- Avoid CPU bottlenecks
-- Maintain strict separation between data and rendering
-- Be structured so future spatial partitioning / partial loading can be added without rewriting the renderer
-
-This system renders **generic arbitrage nodes only**.  
-It does NOT compute arbitrage logic.
+A high-performance **3D arbitrage opportunity visualiser** built with Three.js (WebGL2).
+It renders nodes in 3D space where each node is a sports betting arbitrage opportunity.
+Currently runs on mock data (`mockData.js`). Backend integration is not yet wired.
 
 ---
 
-# Target Environment
+## File Map
 
-- macOS
-- Apple Silicon GPU
-- Chrome / Safari
-- WebGL2 (required)
-- Three.js
-
-Performance expectation:
-
-| Node Count | Target |
-|------------|--------|
-| 10k        | Effortless |
-| 20k        | Stable 60 FPS |
-| 50k        | Usable |
-| 100k+      | Future scalability with filtering |
+| File | Role |
+|---|---|
+| `SceneManager.js` | Top-level: owns renderer, scene, camera, lights, axes. Composes all sub-systems. |
+| `NodeRenderer.js` | Manages all node geometry (InstancedMesh), colours, hover/focus glow, search. |
+| `EdgeRenderer.js` | Draws connection lines (dashed LineSegments) between nodes. |
+| `CameraController.js` | Orbit + smooth focus-fly camera. |
+| `InteractionController.js` | Raycasting, hover, click → focus. |
+| `mockData.js` | Generates 1000 synthetic arbitrage nodes across 4 sports. |
+| `NodeRender.jsx` | React component: mounts canvas, wires SceneManager, renders search panel + legend UI. |
 
 ---
 
-# Core Rendering Strategy (CRITICAL)
+## Node Data Model
 
-### MUST USE
-- `THREE.InstancedMesh`
-- WebGL2
-- Very low poly geometry
-- One material per cluster
-- Batched matrix updates
+Each node has **5 properties**:
 
-### MUST NOT
-- Create one Mesh per node
-- Use high-segment spheres
-- Use per-node materials
-- Enable shadows
-- Use transparency
-- Recompute instance matrices every frame
-- Store heavy data in mesh.userData
-
----
-
-# Data Model
-
-```ts
-export interface ArbNode {
-  node_id: string;
-
-  cluster: string;          // "sports", "quant", etc.
-  subcategory?: string;
-
-  position: {
-    x: number;
-    y: number;
-    z: number;
-  };
-
+```js
+{
+  node_id: string,   // e.g. "AFB_KC_BUF_DraftKings_42"
+  live: boolean,     // currently-active opportunity
   metrics: {
-    score?: number;
-    profit_percent?: number;
-    event_count: number;
-  };
-
-  tags?: string[];
-
-  event_preview?: {
-    event_type: string;
-    exchange?: string;
-    price?: number;
-  }[];
+    confidence: number,  // [0, 1]   → X axis
+    profit:     number,  // float %  → Y axis  (can be negative)
+    risk:       number,  // [0, 1]   → Z axis
+    volume:     number,  // dollars  → node SIZE
+  }
 }
+```
 
-Important:
+**Three axes = three metrics. Volume = size. Live = colour override.**
 
-Do NOT attach full event arrays to meshes.
+---
 
-Rendering layer must not depend on nested data structures.
+## World-Space Axis Mapping
 
-Internal Memory Layout (Apple Silicon Optimized)
+Defined at the top of `NodeRenderer.js`:
 
-Avoid nested object-heavy storage.
+```js
+const CONF_SCALE  = 2000;   // X = confidence * 2000 - 1000  → X ∈ [-1000, 1000]
+const CONF_OFFSET = -1000;
+const PROFIT_SCALE = 80;    // Y = profit * 80               → ~-400 to +800 world units
+const RISK_SCALE  = 2000;   // Z = risk * 2000 - 1000        → Z ∈ [-1000, 1000]
+const RISK_OFFSET = -1000;
+```
 
-Maintain flat buffers internally:
+If you change these, also update the axis extents in `SceneManager._buildAxes()`.
 
-positions: Float32Array
-scales: Float32Array
-profit: Float32Array
-clusterIndex: Uint16Array
-nodeIds: string[]
+---
 
-Reasons:
+## Node Size (Volume)
 
-Contiguous memory improves CPU cache performance
+```js
+scale = 0.15 + Math.pow(vol / 50000, 0.5) * 2.8
+```
 
-Reduces garbage collection pressure
+- `vol = 400` (min) → scale ≈ 0.30  (tiny)
+- `vol = 50000` (max) → scale ≈ 2.95 (large)
+- ~7–10× size ratio across the data range — intentionally dramatic.
 
-Enables future GPU buffer streaming
+`vol_max` reference is 50 000 (football max from `mockData.js`). If you change the mock data ranges, update the `50000` denominator here.
 
-Predictable update performance
+---
 
-Keep metadata separate from rendering buffers.
+## Colour Scheme
 
-Geometry
+| Condition | Colour |
+|---|---|
+| `live === true` | `#ff3333` bright red — overrides everything |
+| `profit >= 3%` | `#39ff14` neon green |
+| `profit 0–3%` | lerp teal `#4ecdc4` → neon green |
+| `profit < 0%` | lerp dark blue `#2d3561` → teal (at -5% it's fully dark blue) |
+| Hover | white glow overlay mesh (1.35× scale) |
+| Clicked / focused | gold `#ffd700` glow (1.6× scale) |
+| Neighbours of focused | cyan `#00e5ff` glow (1.45× scale) |
+| Search result (multi) | neon green `#39ff14` glow (1.5× scale) |
 
-Use low-poly geometry only:
+---
 
-const geometry = new THREE.IcosahedronGeometry(1, 0);
+## Axes
 
-Do NOT use high-segment spheres.
+Three plain white lines drawn in `SceneManager._buildAxes()`:
 
-Reason:
+```
+X: (-1100, 0, 0) → (1100, 0, 0)   — Confidence
+Y: (0, -400, 0)  → (0, 800, 0)    — Profit
+Z: (0, 0, -1100) → (0, 0, 1100)   — Risk
+```
 
-Lower vertex count
+Material: `LineBasicMaterial({ color: 0xffffff, opacity: 0.25, transparent: true })`
+No tick marks. WebGL caps `linewidth` at 1 on all GPUs — opacity is the only way to appear thinner.
 
-Faster instancing
+Axis lines are stored in `this._axisLines` and disposed cleanly.
 
-Better scaling behavior
+---
 
-Cluster-Based Instanced Mesh Structure
+## Edge (Connection) Lines
 
-Each cluster gets its own InstancedMesh.
+`EdgeRenderer.js` — dashed `LineSegments`:
 
-Example clusters:
+```js
+LineDashedMaterial({ color: 0x888888, dashSize: 12, gapSize: 20, opacity: 0.35 })
+```
 
-sports
+Light grey, semi-transparent. When a node is focused, its connected edges get a solid cyan overlay (`#00e5ff`).
 
-quant
+---
 
-crypto
+## Search
 
-misc
+`NodeRenderer.search(criteria)` filters nodes by any combination of:
+- `text` — substring match on `node_id`
+- `live` — boolean filter
+- `minProfit / maxProfit`
+- `minConf / maxConf`
+- `minRisk / maxRisk`
 
-Scene structure:
+Returns flat `nodeIndex[]`. If 1 result → camera flies to it. If multiple → neon green glow on all matches.
 
-Scene
- ├── NodeGroup
- │     ├── sportsMesh (InstancedMesh)
- │     ├── quantMesh
- │     ├── cryptoMesh
- │     ├── miscMesh
- │
- ├── HighlightMesh (single instance mesh)
- └── Lights
+---
 
-One draw call per cluster.
+## Performance Rules (Don't Break These)
 
-Node Size Encoding
+- **Never** create one `Mesh` per node — everything goes through `InstancedMesh`.
+- **Never** update instance matrices inside the animation loop — only on data change.
+- Animation loop does exactly two things: `cameraController.update()` + `renderer.render()`.
+- `IcosahedronGeometry(1, 0)` — 20-triangle icosphere, shared across all meshes.
+- One flat `InstancedMesh` for all nodes (not per-cluster). `instanceId === nodeIndex` directly.
+- DPR capped at 2.
 
-Scale derived from event_count.
+---
 
-Use logarithmic scaling:
+## Mock Data (`mockData.js`)
 
-const baseSize = 0.5;
-const scale = baseSize + Math.log2(event_count + 1) * 0.25;
+Generates `n` nodes (default 1000) with seeded LCG RNG (reproducible layout).
+Four sports: baseball, football, basketball, hockey — each with different metric distributions.
+~8% of nodes are `live`. ~8% have negative profit.
+Volume range: `$400` (hockey min) to `$50 000` (football max).
 
-Rules:
+---
 
-Compute once during node initialization/update.
+## Camera
 
-Do NOT recompute every frame.
+Start position: `(0, 2000, 4000)`. FOV 60. Near=1, Far=40 000.
+Orbit controls live in `CameraController.js`. Focus-fly uses lerp animation.
 
-Profitability Encoding
+---
 
-If profit_percent exists:
+## React Entry Point
 
-Option A:
+`NodeRender.jsx` mounts `SceneManager` on a `<canvas>` via `useEffect`.
+It also renders:
+- **Search panel** (top-right, absolute positioned)
+- **Legend** (bottom-left, shows axis labels + colour key)
 
-Adjust emissive intensity
+The legend already labels X=Confidence, Y=Profit, Z=Risk with white text.
 
-Option B:
+---
 
-Use instanceColor attribute
+## Known Constraints / Gotchas
 
-Do NOT create dynamic materials per node.
-
-Materials must be reused per cluster.
-
-Material Setup
-
-Use simple lighting:
-
-const material = new THREE.MeshStandardMaterial({
-  color,
-  roughness: 0.8,
-  metalness: 0.1
-});
-
-Lighting rules:
-
-One directional light only
-
-No shadows
-
-No HDR environments
-
-No physically correct lighting
-
-No transparency
-
-No additive blending
-
-Transparency destroys performance at scale.
-
-Instance Matrix Updates
-
-Instance matrices must be updated:
-
-During initialization
-
-When node data changes
-
-After batch update:
-
-instancedMesh.instanceMatrix.needsUpdate = true;
-
-Never update matrices inside animation loop.
-
-Apple Silicon GPUs are fast. CPU-side per-frame updates are the bottleneck.
-
-Interaction Model
-Hover
-
-Use raycasting against InstancedMesh.
-
-Retrieve instanceId.
-
-Map instance to node_id.
-
-Show DOM-based tooltip (not 3D text).
-
-Do NOT create per-node 3D labels.
-
-Hover Highlight Optimization
-
-Do NOT modify all instance buffers.
-
-Instead:
-
-Maintain separate HighlightMesh with count = 1.
-
-Copy hovered node transform.
-
-Slightly scale it.
-
-Apply emissive highlight.
-
-Avoid rewriting instance buffers for highlight.
-
-Click → Focus
-
-Implement:
-
-focusNode(nodeId: string)
-
-Camera movement:
-
-camera.position.lerp(targetPosition, 0.1);
-camera.lookAt(nodePosition);
-
-Stop when within epsilon distance.
-
-Do NOT rebuild scene during focus.
-
-Raycasting Strategy
-
-For 20k nodes:
-
-Direct InstancedMesh raycasting is acceptable.
-
-Architecture must allow:
-
-Filtering raycast candidates in the future
-
-Spatial subdivision layer insertion later
-
-Do not hardcode assumptions that entire dataset is always visible.
-
-Layout Strategy
-
-If position exists:
-
-Use it directly.
-
-If no position:
-
-Cluster centers:
-
-sports: (-50, 0, 0)
-quant:  (50, 0, 0)
-crypto: (0, 0, 50)
-misc:   (0, 0, -50)
-
-Scatter nodes within radius using seeded RNG for determinism.
-
-Do NOT implement force-directed layout.
-
-Animation Loop Rules
-
-Animation loop must only:
-
-Update camera
-
-Update controls
-
-Render scene
-
-Do NOT:
-
-Loop over all nodes
-
-Recalculate matrices
-
-Recompute layouts
-
-Rebuild buffers
-
-Retina / DPR Handling (Important on Mac)
-
-Limit device pixel ratio:
-
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-
-Do not render at DPR 3 on Retina displays.
-
-Memory Budget
-
-Each instance matrix:
-
-16 floats
-
-64 bytes
-
-20k nodes ≈ 1.3MB
-50k nodes ≈ 3.2MB
-
-Acceptable on Mac.
-
-Avoid duplicating buffers.
-
-Class Structure Requirements
-
-Implement:
-
-SceneManager.ts
-
-NodeRenderer.ts
-
-InteractionController.ts
-
-CameraController.ts
-
-NodeRenderer must expose:
-
-class NodeRenderer {
-  initialize(nodes: ArbNode[]): void;
-  updateNode(node: ArbNode): void;
-  focusNode(nodeId: string): void;
-}
-
-Rendering layer must remain independent of full dataset assumptions.
-
-Demo Requirements
-
-The implementation must include:
-
-Generation of 20,000 synthetic nodes
-
-3 clusters
-
-Random metrics
-
-Hover tooltip (DOM overlay)
-
-Click to focus
-
-Smooth camera animation
-
-Stable 60 FPS on M1 Mac
-
-Performance Killers (Do Not Implement)
-
-Mesh per node
-
-Shadow maps
-
-Transparent materials
-
-High-poly spheres
-
-Per-frame buffer rebuild
-
-Large object storage inside meshes
-
-Heavy per-frame raycasting loops
-
-Continuous layout recomputation
-
-Scalability Architecture Requirements
-
-The system must be structured so that:
-
-Rendering layer does not assume entire dataset is permanently loaded
-
-Cluster meshes can be resized independently
-
-Node subsets can be activated/deactivated
-
-Spatial indexing can be inserted later without renderer rewrite
-
-Edge rendering can be added as a separate instanced system
-
-Rendering, data, and interaction layers must remain cleanly separated.
-
-Final Directive
-
-Build a Mac-optimized Three.js instanced node renderer targeting 20k nodes at 60 FPS using:
-
-IcosahedronGeometry(1,0)
-
-Cluster-based InstancedMesh
-
-Flat memory buffers
-
-Minimal lighting
-
-No shadows
-
-No transparency
-
-DPR capped at 2
-
-Zero per-frame instance updates
+- `linewidth > 1` is ignored by WebGL on virtually all GPUs (Three.js limitation). Use opacity instead.
+- `LineDashedMaterial` requires `mesh.computeLineDistances()` to be called or dashes won't render.
+- Focus glow meshes (`_focusCenterMesh`, `_focusNeighborMesh`) are pre-allocated at `max=1` and `max=200` respectively — capped at 200 neighbours.
+- Search result glow mesh is allocated at `n` instances (same count as node count).

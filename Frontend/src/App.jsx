@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import Navbar from './components/Navbar'
-import Home from './pages/Home'
+import Navbar    from './components/Navbar'
+import Home      from './pages/Home'
 import Arbitrage from './pages/Arbitrage'
 
 export default function App() {
@@ -9,8 +9,8 @@ export default function App() {
   return (
     <>
       <Navbar page={page} onNav={setPage} />
-      {page === 'home' && <Home />}
-      {page === 'arbitrage' && <Arbitrage />}
+      {page === 'home'    && <Home    onNav={setPage} />}
+      {page === 'product' && <Arbitrage />}
     </>
   )
 }

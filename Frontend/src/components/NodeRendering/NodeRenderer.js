@@ -52,9 +52,9 @@ export class NodeRenderer {
     this._focusNeighborMesh = null; // up to 200   — immediate neighbors (cyan)
     this._focusedNodeId     = null;
 
-    // ── Search result glow mesh ───────────────────────────────────────────
-    this._searchResultMesh     = null;
-    this._searchResultMaxCount = 0;
+    // ── Search visibility ─────────────────────────────────────────────────
+    // null = all nodes visible; Set<number> = only these nodeIndices visible
+    this._searchVisibleSet = null;
 
     // ── Live ring mesh (horizontal torus around each live node) ───────────
     this._liveRingMesh     = null;
@@ -80,12 +80,12 @@ export class NodeRenderer {
   /**
    * Build the InstancedMesh from the node array.
    * Positions nodes on the (confidence, profit, risk) axes.
-   * @param {{ node_id: string, live: boolean, metrics: { confidence, profit, risk, volume } }[]} nodes
+   * @param {{ node_id: string, sport: string, live: boolean, metrics: { confidence, profit, risk, volume } }[]} nodes
    */
   initialize(nodes) {
     this._clearNodeMesh();
-    this._clearSearchMesh();
     this._clearLiveRings();
+    this._searchVisibleSet = null;
     this._nodeIndexMap.clear();
     this._liveIndices = [];
     this._hoveredIndex = -1;
@@ -155,8 +155,6 @@ export class NodeRenderer {
     this._nodeMesh.instanceColor.needsUpdate  = true;
     this.scene.add(this._nodeMesh);
 
-    // Build search mesh and live rings now that n is known
-    this._buildSearchMesh(n);
     this._buildLiveRings();
   }
 
@@ -229,18 +227,6 @@ export class NodeRenderer {
 
   /**
    * Search nodes by multiple criteria. Returns matching nodeIndices.
-   *
-   * @param {{
-   *   text?:       string,   // substring match against nodeId (case-insensitive)
-   *   live?:       boolean,  // filter by live status
-   *   minProfit?:  number,
-   *   maxProfit?:  number,
-   *   minConf?:    number,   // min confidence [0-1]
-   *   maxConf?:    number,
-   *   minRisk?:    number,   // min risk [0-1]
-   *   maxRisk?:    number,
-   * }} criteria
-   * @returns {number[]} nodeIndices
    */
   search(criteria = {}) {
     const { text, live, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk } = criteria;
@@ -252,9 +238,7 @@ export class NodeRenderer {
     const hasRiskMin = minRisk   !== undefined && minRisk   !== '';
     const hasRiskMax = maxRisk   !== undefined && maxRisk   !== '';
 
-    // Use live index as candidate set when filtering live-only (saves 93% scan)
     const candidates = (live === true) ? this._liveIndices : null;
-
     const results = [];
     const n       = this.nodeIds.length;
 
@@ -280,8 +264,8 @@ export class NodeRenderer {
   }
 
   /**
-   * Apply search results:
-   *   0 → clear  |  1 → focus+glow  |  N → glow all neon green
+   * Show only the matching nodes; hide everything else.
+   * Single result → also fly-to + focus glow.
    * @returns {number} match count
    */
   applySearchResults(indices) {
@@ -289,32 +273,36 @@ export class NodeRenderer {
     this.clearFocus();
     if (!indices.length) return 0;
 
+    this._searchVisibleSet = new Set(indices);
+    this._setNodeVisibility(this._searchVisibleSet);
+
     if (indices.length === 1) {
       this.focusNode(this.nodeIds[indices[0]]);
-      return 1;
     }
 
-    const cap = Math.min(indices.length, this._searchResultMaxCount);
-    for (let j = 0; j < cap; j++) {
-      const ni = indices[j];
-      const s  = this.scales[ni] * 1.5;
-      this._dummy.position.copy(this._nodePosition(ni));
-      this._dummy.scale.set(s, s, s);
-      this._dummy.rotation.set(0, 0, 0);
-      this._dummy.updateMatrix();
-      this._searchResultMesh.setMatrixAt(j, this._dummy.matrix);
-    }
-    this._searchResultMesh.count = cap;
-    this._searchResultMesh.instanceMatrix.needsUpdate = true;
-    this._searchResultMesh.visible = true;
     return indices.length;
   }
 
+  /** Restore all nodes to visible. */
   clearSearchResults() {
-    if (this._searchResultMesh) {
-      this._searchResultMesh.visible = false;
-      this._searchResultMesh.count   = 0;
-    }
+    if (!this._searchVisibleSet) return;
+    this._searchVisibleSet = null;
+    this._setNodeVisibility(null);
+  }
+
+  /**
+   * Filter a connections array to only those where both endpoints are visible.
+   * Returns the full array when no search is active.
+   * @param {Array<{source: string, target: string}>} connections
+   */
+  filterConnectionsByVisibility(connections) {
+    if (!this._searchVisibleSet) return connections;
+    return connections.filter(({ source, target }) => {
+      const si = this._nodeIndexMap.get(source);
+      const ti = this._nodeIndexMap.get(target);
+      return si !== undefined && ti !== undefined &&
+             this._searchVisibleSet.has(si) && this._searchVisibleSet.has(ti);
+    });
   }
 
   // ── Hover ────────────────────────────────────────────────────────────────────
@@ -338,26 +326,15 @@ export class NodeRenderer {
 
   // ── Raycasting ───────────────────────────────────────────────────────────────
 
-  /**
-   * Returns the meshes the raycaster should test against.
-   * Single flat mesh — instanceId === nodeIndex.
-   */
   getClusterMeshes() {
     return this._nodeMesh ? [this._nodeMesh] : [];
   }
 
-  /**
-   * Resolve a raycast hit to a flat nodeIndex.
-   * With the single mesh, instanceId === nodeIndex directly.
-   */
   resolveHit(mesh, instanceId) {
     if (instanceId === undefined || instanceId === null) return null;
     return instanceId < this.nodeIds.length ? instanceId : null;
   }
 
-  /**
-   * Return display data for a node index.
-   */
   getNodeData(nodeIndex) {
     return {
       nodeId:     this.nodeIds[nodeIndex],
@@ -388,7 +365,6 @@ export class NodeRenderer {
 
   dispose() {
     this._clearNodeMesh();
-    this._clearSearchMesh();
     this._clearLiveRings();
     if (this._highlightMesh)     { this.scene.remove(this._highlightMesh);     this._highlightMesh.material.dispose(); }
     if (this._focusCenterMesh)   { this.scene.remove(this._focusCenterMesh);   this._focusCenterMesh.material.dispose(); }
@@ -415,6 +391,44 @@ export class NodeRenderer {
     }
   }
 
+  /**
+   * Show/hide nodes by scaling instance matrices.
+   * visibleSet = null → all visible; Set<number> → only those indices visible.
+   * Also syncs live ring visibility.
+   */
+  _setNodeVisibility(visibleSet) {
+    const n = this.nodeIds.length;
+    for (let i = 0; i < n; i++) {
+      this._dummy.position.set(
+        this.positions[i * 3],
+        this.positions[i * 3 + 1],
+        this.positions[i * 3 + 2],
+      );
+      const show = !visibleSet || visibleSet.has(i);
+      const s    = show ? this.scales[i] : 0;
+      this._dummy.scale.set(s, s, s);
+      this._dummy.rotation.set(0, 0, 0);
+      this._dummy.updateMatrix();
+      this._nodeMesh.setMatrixAt(i, this._dummy.matrix);
+    }
+    this._nodeMesh.instanceMatrix.needsUpdate = true;
+
+    // Sync live ring visibility
+    if (this._liveRingMesh) {
+      for (let j = 0; j < this._liveIndices.length; j++) {
+        const i    = this._liveIndices[j];
+        const show = !visibleSet || visibleSet.has(i);
+        const s    = show ? this.scales[i] * 1.5 : 0;
+        this._dummy.position.copy(this._nodePosition(i));
+        this._dummy.scale.set(s, s, s);
+        this._dummy.rotation.set(Math.PI / 2, 0, 0);
+        this._dummy.updateMatrix();
+        this._liveRingMesh.setMatrixAt(j, this._dummy.matrix);
+      }
+      this._liveRingMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
   _applyFocusGlow(nodeId) {
     this._focusedNodeId = nodeId;
 
@@ -431,7 +445,7 @@ export class NodeRenderer {
       this._focusCenterMesh.visible = true;
     }
 
-    const neighbors  = this._adjacency.get(nodeId) ?? new Set();
+    const neighbors   = this._adjacency.get(nodeId) ?? new Set();
     const neighborArr = [...neighbors].slice(0, 200);
     let instIdx = 0;
     neighborArr.forEach((nid) => {
@@ -477,41 +491,13 @@ export class NodeRenderer {
     }
   }
 
-  _buildSearchMesh(n) {
-    this._clearSearchMesh();
-    const mat = new THREE.MeshStandardMaterial({
-      color:             0x39ff14,
-      emissive:          0x39ff14,
-      emissiveIntensity: 1.4,
-      roughness:         0.25,
-      metalness:         0.3,
-    });
-    this._searchResultMesh = new THREE.InstancedMesh(this._geometry, mat, n);
-    this._searchResultMesh.count       = 0;
-    this._searchResultMesh.visible     = false;
-    this._searchResultMesh.renderOrder = 3;
-    this._searchResultMaxCount         = n;
-    this.scene.add(this._searchResultMesh);
-  }
-
-  _clearSearchMesh() {
-    if (this._searchResultMesh) {
-      this.scene.remove(this._searchResultMesh);
-      this._searchResultMesh.material.dispose();
-      this._searchResultMesh     = null;
-      this._searchResultMaxCount = 0;
-    }
-  }
-
   /**
    * Build a horizontal torus ring (XZ plane) around every live node.
-   * Ring lies flat so it reads clearly as a halo from the default camera angle.
    */
   _buildLiveRings() {
     const liveCount = this._liveIndices.length;
     if (!liveCount) return;
 
-    // Shared torus geometry — radius 1 (scaled per-instance), thin tube
     this._liveRingGeometry = new THREE.TorusGeometry(1, 0.045, 6, 48);
     const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
 
@@ -522,7 +508,6 @@ export class NodeRenderer {
       const s = this.scales[i] * 1.5;
       this._dummy.position.copy(this._nodePosition(i));
       this._dummy.scale.set(s, s, s);
-      // Rotate 90° around X to lay the torus flat in the XZ plane (horizontal halo)
       this._dummy.rotation.set(Math.PI / 2, 0, 0);
       this._dummy.updateMatrix();
       this._liveRingMesh.setMatrixAt(j, this._dummy.matrix);

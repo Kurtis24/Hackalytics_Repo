@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { SceneManager } from './SceneManager.js';
-import { generateMockNodes, generateConnections } from './mockData.js';
+import mockNodes from '../../data/mockNodes.js';
+import { adaptNodesForScene, generateConnections } from '../../utils/dataAdapter.js';
 
 export default function NodeRender() {
   const canvasRef  = useRef(null);
@@ -26,7 +27,7 @@ export default function NodeRender() {
     try {
       const manager     = new SceneManager(canvas);
       managerRef.current = manager;
-      const nodes       = generateMockNodes(1000);
+      const nodes       = adaptNodesForScene(mockNodes);
       const connections = generateConnections(nodes);
       manager.loadNodes(nodes, connections);
       manager.start();
@@ -40,8 +41,8 @@ export default function NodeRender() {
 
   // ── Search handlers ─────────────────────────────────────────────────────────
   const handleSearch = useCallback(() => {
-    const nr = managerRef.current?.nodeRenderer;
-    if (!nr) return;
+    const manager = managerRef.current;
+    if (!manager) return;
 
     const criteria = {};
     if (searchText.trim()) criteria.text      = searchText.trim();
@@ -55,15 +56,13 @@ export default function NodeRender() {
 
     if (!Object.keys(criteria).length) return;
 
-    const indices = nr.search(criteria);
-    nr.applySearchResults(indices);
-    setResultInfo({ count: indices.length });
+    const indices = manager.nodeRenderer.search(criteria);
+    const count   = manager.applySearch(indices);
+    setResultInfo({ count });
   }, [searchText, liveOnly, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk]);
 
   const handleClear = useCallback(() => {
-    const nr = managerRef.current?.nodeRenderer;
-    nr?.clearSearchResults();
-    nr?.clearFocus();
+    managerRef.current?.clearSearch();
     setResultInfo(null);
     setSearchText(''); setLiveOnly(false);
     setMinProfit(''); setMaxProfit('');

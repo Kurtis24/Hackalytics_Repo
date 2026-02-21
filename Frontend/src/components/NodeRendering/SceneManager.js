@@ -56,7 +56,8 @@ export class SceneManager {
     this._axisLines = [];
     this._buildAxes();
 
-    this._animationId = null;
+    this._animationId   = null;
+    this._allConnections = [];
     window.addEventListener('resize', this._onResize);
   }
 
@@ -65,6 +66,7 @@ export class SceneManager {
    * Call this once (or again to replace the dataset).
    */
   loadNodes(nodes, connections = []) {
+    this._allConnections = connections;
     this.nodeRenderer.initialize(nodes);
     this.nodeRenderer.loadConnections(connections);
     this.edgeRenderer.initialize(connections, this.nodeRenderer);
@@ -74,6 +76,25 @@ export class SceneManager {
     this.nodeRenderer._onFocusCallback = (nodeId) => {
       this.edgeRenderer.setFocusEdges(nodeId, this.nodeRenderer);
     };
+  }
+
+  /**
+   * Apply search: hide non-matching nodes and rebuild edges for visible nodes only.
+   * @param {number[]} indices — nodeIndex[] from NodeRenderer.search()
+   * @returns {number} match count
+   */
+  applySearch(indices) {
+    const count = this.nodeRenderer.applySearchResults(indices);
+    const visibleConns = this.nodeRenderer.filterConnectionsByVisibility(this._allConnections);
+    this.edgeRenderer.initialize(visibleConns, this.nodeRenderer);
+    return count;
+  }
+
+  /** Restore all nodes and edges. */
+  clearSearch() {
+    this.nodeRenderer.clearSearchResults();
+    this.nodeRenderer.clearFocus();
+    this.edgeRenderer.initialize(this._allConnections, this.nodeRenderer);
   }
 
   /** Start the render loop. */
@@ -150,5 +171,6 @@ export class SceneManager {
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h, false);
+    this.edgeRenderer.onResize(w, h);
   }
 }

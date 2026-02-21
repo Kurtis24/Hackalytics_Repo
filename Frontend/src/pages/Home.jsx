@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api } from '../services/api'
+import NodeRender from '../components/NodeRendering/NodeRender'
 
 export default function Home() {
   const [health, setHealth] = useState(null)
@@ -33,6 +34,11 @@ export default function Home() {
         {!health && !error && (
           <p className="text-gray-400 text-sm animate-pulse">Connecting to backend…</p>
         )}
+      </div>
+
+      {/* 3D Node Graph */}
+      <div style={{ width: '100%', height: '70vh' }}>
+        <NodeRender />
       </div>
     </main>
   )

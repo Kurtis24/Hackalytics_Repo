@@ -1,34 +1,14 @@
 import * as THREE from 'three';
 
-// ─── Cluster configuration ────────────────────────────────────────────────────
-const CLUSTERS = {
-  sports:      { color: 0xff6b6b, center: [-1000,  0,     0] },
-  quant:       { color: 0x4ecdc4, center: [  1400,  0,     0] },
-  crypto:      { color: 0xf7d794, center: [     0,  0,  1200] },
-  football:    { color: 0x55efc4, center: [     0,  0, -1200] },
-  forex:       { color: 0xfd79a8, center: [ -1200,  0,  -900] },
-  commodities: { color: 0xe17055, center: [  1000,  0,  -900] },
-};
-const CLUSTER_NAMES  = Object.keys(CLUSTERS);
-const SCATTER_RADIUS = 800; // node distance
-
-// ─── Seeded LCG RNG for deterministic scatter ─────────────────────────────────
-function lcgRandom(seed) {
-  let s = seed >>> 0;
-  return () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 0xffffffff;
-  };
-}
-
-// Box-Muller transform — returns a pair of independent standard normals.
-// Produces a natural star-field density: dense core, sparse wispy edges.
-function boxMuller(rng) {
-  const u1 = Math.max(rng(), 1e-10); // guard against log(0)
-  const u2 = rng();
-  const mag = Math.sqrt(-2 * Math.log(u1));
-  return [mag * Math.cos(2 * Math.PI * u2), mag * Math.sin(2 * Math.PI * u2)];
-}
+// ─── Axis → world-space mapping ───────────────────────────────────────────────
+// confidence ∈ [0, 1]  → X  ∈ [-1000, 1000]
+// profit (%)           → Y  (80 world-units per %)
+// risk       ∈ [0, 1]  → Z  ∈ [-1000, 1000]
+const CONF_SCALE  = 2000;   // world units across full confidence range
+const CONF_OFFSET = -1000;  // confidence=0 starts here
+const PROFIT_SCALE = 80;    // world units per % profit
+const RISK_SCALE  = 2000;
+const RISK_OFFSET = -1000;
 
 // ─── NodeRenderer ─────────────────────────────────────────────────────────────
 export class NodeRenderer {
@@ -41,191 +21,167 @@ export class NodeRenderer {
     this.cameraController = cameraController;
 
     // Shared low-poly geometry (IcosahedronGeometry detail=0 → 20 tris)
-    this._geometry  = new THREE.IcosahedronGeometry(1, 0);
-    this._nodeGroup = new THREE.Group();
-    scene.add(this._nodeGroup);
+    this._geometry = new THREE.IcosahedronGeometry(1, 0);
 
     // ── Flat buffers (allocated in initialize) ────────────────────────────
-    this.positions     = null; // Float32Array  [x,y,z per node]
-    this.scales        = null; // Float32Array  [scale per node]
-    this.profit        = null; // Float32Array  [profit_percent per node]
-    this.clusterIndex  = null; // Uint16Array   [clusterIdx per node]
-    this.nodeIds       = [];   // string[]
-    this.subcategories = [];   // string[]  — e.g. "NBA", "BTC", "STAT_ARB"
+    this.positions   = null; // Float32Array  [x,y,z per node]
+    this.scales      = null; // Float32Array  [scale per node]
+    this.profit      = null; // Float32Array  [profit_percent per node]
+    this.confidence  = null; // Float32Array  [0-1 per node]
+    this.risk        = null; // Float32Array  [0-1 per node]
+    this.live        = null; // Uint8Array    [0/1 per node]
+    this.nodeIds     = [];   // string[]
 
     // ── Lookup maps ───────────────────────────────────────────────────────
-    this._nodeIndexMap      = new Map(); // nodeId      → flat index
-    this._clusterNodeLists  = new Map(); // clusterName → nodeIndex[]
-    this._subcategoryIndex  = new Map(); // subcategory → nodeIndex[]
-    this._instanceInfo      = new Map(); // nodeIndex   → { mesh, instanceIndex, clusterName }
+    this._nodeIndexMap = new Map(); // nodeId → flat index
+    this._liveIndices  = [];       // nodeIndex[] of live nodes (for fast live filter)
 
-    // ── Per-cluster InstancedMeshes ───────────────────────────────────────
-    this._clusterMeshes = new Map(); // clusterName → InstancedMesh
+    // ── Single InstancedMesh (all nodes, per-instance color) ──────────────
+    this._nodeMesh = null;
 
     // ── Highlight (single-instance overlay mesh) ──────────────────────────
-    this._highlightMesh  = null;
-    this._hoveredIndex   = -1;
+    this._highlightMesh = null;
+    this._hoveredIndex  = -1;
 
     // ── Focus glow meshes ─────────────────────────────────────────────────
-    this._focusCenterMesh   = null; // 1 instance  — the clicked node
-    this._focusNeighborMesh = null; // up to 200 instances — immediate neighbors
+    this._focusCenterMesh   = null; // 1 instance  — clicked node (gold)
+    this._focusNeighborMesh = null; // up to 200   — immediate neighbors (cyan)
     this._focusedNodeId     = null;
 
     // ── Search result glow mesh ───────────────────────────────────────────
-    this._searchResultMesh     = null; // up to n instances — search hits
-    this._searchResultMaxCount = 0;   // tracks the buffer size (count is 0 when hidden)
+    this._searchResultMesh     = null;
+    this._searchResultMaxCount = 0;
 
     // ── Adjacency map ─────────────────────────────────────────────────────
     this._adjacency = new Map(); // nodeId → Set<nodeId>
 
     // ── Focus callback (wired by SceneManager) ────────────────────────────
-    this._onFocusCallback = null; // (nodeId: string) => void
+    this._onFocusCallback = null; // (nodeId: string|null) => void
 
-    // Reusable Object3D for matrix writes (never added to scene)
-    this._dummy = new THREE.Object3D();
+    // Reusable objects (never added to scene)
+    this._dummy  = new THREE.Object3D();
+    this._colorA = new THREE.Color();
+    this._colorB = new THREE.Color();
 
     this._buildHighlight();
     this._buildFocusMeshes();
-    // _buildSearchMesh() is deferred to initialize() when node count is known
   }
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
   /**
-   * Build all InstancedMeshes from the node array.
-   * Must be called once before rendering; call again to replace data.
-   * @param {import('./ClaudeREADME.md').ArbNode[]} nodes
+   * Build the InstancedMesh from the node array.
+   * Positions nodes on the (confidence, profit, risk) axes.
+   * @param {{ node_id: string, live: boolean, metrics: { confidence, profit, risk, volume } }[]} nodes
    */
   initialize(nodes) {
-    this._clearClusterMeshes();
+    this._clearNodeMesh();
     this._clearSearchMesh();
     this._nodeIndexMap.clear();
-    this._clusterNodeLists.clear();
-    this._subcategoryIndex.clear();
-    this._instanceInfo.clear();
+    this._liveIndices = [];
     this._hoveredIndex = -1;
-    this._highlightMesh.visible = false;
+    this._highlightMesh.visible     = false;
     this._focusCenterMesh.visible   = false;
     this._focusNeighborMesh.visible = false;
 
     const n = nodes.length;
-    this.positions     = new Float32Array(n * 3);
-    this.scales        = new Float32Array(n);
-    this.profit        = new Float32Array(n);
-    this.clusterIndex  = new Uint16Array(n);
-    this.nodeIds       = new Array(n);
-    this.subcategories = new Array(n);
+    this.positions  = new Float32Array(n * 3);
+    this.scales     = new Float32Array(n);
+    this.profit     = new Float32Array(n);
+    this.confidence = new Float32Array(n);
+    this.risk       = new Float32Array(n);
+    this.live       = new Uint8Array(n);
+    this.nodeIds    = new Array(n);
 
-    // One seeded RNG per cluster for deterministic, stable layout
-    const rngs = {};
-    CLUSTER_NAMES.forEach((name, i) => {
-      rngs[name] = lcgRandom(i * 999983 + 1234567);
-    });
-
-    // ── Pass 1: fill flat buffers ─────────────────────────────────────────
+    // ── Pass 1: fill flat buffers & build indices ─────────────────────────
     for (let i = 0; i < n; i++) {
-      const node    = nodes[i];
-      const clName  = CLUSTERS[node.cluster] ? node.cluster : CLUSTER_NAMES[0];
-      const clIdx   = CLUSTER_NAMES.indexOf(clName);
+      const node = nodes[i];
+      const m    = node.metrics ?? {};
 
-      this.nodeIds[i]       = node.node_id;
-      this.subcategories[i] = node.subcategory ?? '';
+      this.nodeIds[i]    = node.node_id;
       this._nodeIndexMap.set(node.node_id, i);
-      this.clusterIndex[i] = clIdx;
 
-      // Position
-      if (node.position) {
-        this.positions[i * 3]     = node.position.x;
-        this.positions[i * 3 + 1] = node.position.y;
-        this.positions[i * 3 + 2] = node.position.z;
-      } else {
-        const rng          = rngs[clName];
-        const [cx, cy, cz] = CLUSTERS[clName].center;
-        const std          = SCATTER_RADIUS / 2.5; // 3σ covers most of SCATTER_RADIUS
-        const stdY         = std / 3;              // flatter on Y — galactic disk feel
-        const [nx, nz]     = boxMuller(rng);
-        const [ny]         = boxMuller(rng);
-        this.positions[i * 3]     = cx + nx * std;
-        this.positions[i * 3 + 1] = cy + ny * stdY;
-        this.positions[i * 3 + 2] = cz + nz * std;
-      }
+      const conf   = Math.min(0.99, Math.max(0, m.confidence ?? 0.5));
+      const prof   = m.profit    ?? 0;
+      const rsk    = Math.min(0.99, Math.max(0, m.risk       ?? 0.5));
+      const vol    = m.volume    ?? 10000;
+      const isLive = !!node.live;
 
-      // Scale derived from event_count (logarithmic, computed once)
-      const ec      = node.metrics?.event_count ?? 1;
-      this.scales[i] = 0.5 + Math.log2(ec + 1) * 0.25;
+      this.confidence[i] = conf;
+      this.profit[i]     = prof;
+      this.risk[i]       = rsk;
+      this.live[i]       = isLive ? 1 : 0;
 
-      // Profit
-      this.profit[i] = node.metrics?.profit_percent ?? 0;
+      // Position on 3D axes
+      this.positions[i * 3]     = conf * CONF_SCALE  + CONF_OFFSET;
+      this.positions[i * 3 + 1] = prof * PROFIT_SCALE;
+      this.positions[i * 3 + 2] = rsk  * RISK_SCALE  + RISK_OFFSET;
 
-      // Cluster bucket
-      if (!this._clusterNodeLists.has(clName)) this._clusterNodeLists.set(clName, []);
-      this._clusterNodeLists.get(clName).push(i);
+      // Scale from volume — sqrt gives dramatic size spread across the data range
+      this.scales[i] = 0.15 + Math.pow(vol / 50000, 0.5) * 2.8;
 
-      // Subcategory index
-      const sub = this.subcategories[i];
-      if (sub) {
-        if (!this._subcategoryIndex.has(sub)) this._subcategoryIndex.set(sub, []);
-        this._subcategoryIndex.get(sub).push(i);
-      }
+      if (isLive) this._liveIndices.push(i);
     }
+
+    // ── Pass 2: build single InstancedMesh with per-instance color ────────
+    const mat = new THREE.MeshStandardMaterial({
+      color:     0xffffff, // white base so instance color is used directly
+      roughness: 0.75,
+      metalness: 0.10,
+    });
+    this._nodeMesh = new THREE.InstancedMesh(this._geometry, mat, n);
+    this._nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    const color = new THREE.Color();
+    for (let i = 0; i < n; i++) {
+      this._writeDummy(i);
+      this._nodeMesh.setMatrixAt(i, this._dummy.matrix);
+      this._getNodeColor(i, color);
+      this._nodeMesh.setColorAt(i, color);
+    }
+    this._nodeMesh.instanceMatrix.needsUpdate = true;
+    this._nodeMesh.instanceColor.needsUpdate  = true;
+    this.scene.add(this._nodeMesh);
 
     // Build search mesh now that n is known
     this._buildSearchMesh(n);
-
-    // ── Pass 2: build one InstancedMesh per cluster ───────────────────────
-    CLUSTER_NAMES.forEach((clName) => {
-      const list = this._clusterNodeLists.get(clName);
-      if (!list?.length) return;
-
-      const mat  = new THREE.MeshStandardMaterial({
-        color:     CLUSTERS[clName].color,
-        roughness: 0.8,
-        metalness: 0.1,
-      });
-      const mesh = new THREE.InstancedMesh(this._geometry, mat, list.length);
-      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      mesh.userData.clusterName = clName;
-      mesh.userData.nodeList    = list; // instanceIndex → nodeIndex
-
-      list.forEach((nodeIdx, instIdx) => {
-        this._instanceInfo.set(nodeIdx, { mesh, instanceIndex: instIdx, clusterName: clName });
-        this._writeDummy(nodeIdx);
-        mesh.setMatrixAt(instIdx, this._dummy.matrix);
-      });
-
-      mesh.instanceMatrix.needsUpdate = true;
-      this._nodeGroup.add(mesh);
-      this._clusterMeshes.set(clName, mesh);
-    });
   }
 
   /**
-   * Update a single node's position, scale, and profit in-place.
-   * Triggers a minimal instanceMatrix update on the owning mesh only.
+   * Update a single node's data in-place.
    */
   updateNode(node) {
     const i = this._nodeIndexMap.get(node.node_id);
     if (i === undefined) return;
 
-    if (node.position) {
-      this.positions[i * 3]     = node.position.x;
-      this.positions[i * 3 + 1] = node.position.y;
-      this.positions[i * 3 + 2] = node.position.z;
-    }
-    const ec      = node.metrics?.event_count ?? 1;
-    this.scales[i] = 0.5 + Math.log2(ec + 1) * 0.25;
-    this.profit[i] = node.metrics?.profit_percent ?? 0;
+    const m    = node.metrics ?? {};
+    const conf = Math.min(0.99, Math.max(0, m.confidence ?? this.confidence[i]));
+    const prof = m.profit ?? this.profit[i];
+    const rsk  = Math.min(0.99, Math.max(0, m.risk       ?? this.risk[i]));
+    const vol  = m.volume ?? 1000;
 
-    const info = this._instanceInfo.get(i);
-    if (!info) return;
+    this.confidence[i] = conf;
+    this.profit[i]     = prof;
+    this.risk[i]       = rsk;
+    this.live[i]       = node.live ? 1 : 0;
+    this.scales[i]     = 0.15 + Math.pow(vol / 50000, 0.5) * 2.8;
+
+    this.positions[i * 3]     = conf * CONF_SCALE  + CONF_OFFSET;
+    this.positions[i * 3 + 1] = prof * PROFIT_SCALE;
+    this.positions[i * 3 + 2] = rsk  * RISK_SCALE  + RISK_OFFSET;
+
     this._writeDummy(i);
-    info.mesh.setMatrixAt(info.instanceIndex, this._dummy.matrix);
-    info.mesh.instanceMatrix.needsUpdate = true;
+    this._nodeMesh.setMatrixAt(i, this._dummy.matrix);
+    this._nodeMesh.instanceMatrix.needsUpdate = true;
+
+    const color = new THREE.Color();
+    this._getNodeColor(i, color);
+    this._nodeMesh.setColorAt(i, color);
+    this._nodeMesh.instanceColor.needsUpdate = true;
   }
 
   /**
    * Build the adjacency map from a connections array.
-   * Call after initialize() so nodeIds are populated.
    * @param {Array<{source: string, target: string}>} connections
    */
   loadConnections(connections) {
@@ -239,8 +195,7 @@ export class NodeRenderer {
   }
 
   /**
-   * Animate camera to focus on a node by its ID.
-   * Also applies the focus glow and fires _onFocusCallback.
+   * Animate camera to focus on a node. Applies focus glow and fires callback.
    */
   focusNode(nodeId) {
     const i = this._nodeIndexMap.get(nodeId);
@@ -250,49 +205,6 @@ export class NodeRenderer {
     if (this._onFocusCallback) this._onFocusCallback(nodeId);
   }
 
-  /**
-   * Light up the focused node and its immediate neighbors.
-   */
-  _applyFocusGlow(nodeId) {
-    this._focusedNodeId = nodeId;
-
-    // ── Center node glow ──────────────────────────────────────────────────
-    const ci = this._nodeIndexMap.get(nodeId);
-    if (ci !== undefined) {
-      const s = this.scales[ci] * 1.6;
-      this._dummy.position.copy(this._nodePosition(ci));
-      this._dummy.scale.set(s, s, s);
-      this._dummy.rotation.set(0, 0, 0);
-      this._dummy.updateMatrix();
-      this._focusCenterMesh.setMatrixAt(0, this._dummy.matrix);
-      this._focusCenterMesh.instanceMatrix.needsUpdate = true;
-      this._focusCenterMesh.count   = 1;
-      this._focusCenterMesh.visible = true;
-    }
-
-    // ── Neighbor glow ─────────────────────────────────────────────────────
-    const neighbors = this._adjacency.get(nodeId) ?? new Set();
-    const neighborArr = [...neighbors].slice(0, 200);
-    let instIdx = 0;
-    neighborArr.forEach((nid) => {
-      const ni = this._nodeIndexMap.get(nid);
-      if (ni === undefined) return;
-      const s = this.scales[ni] * 1.45;
-      this._dummy.position.copy(this._nodePosition(ni));
-      this._dummy.scale.set(s, s, s);
-      this._dummy.rotation.set(0, 0, 0);
-      this._dummy.updateMatrix();
-      this._focusNeighborMesh.setMatrixAt(instIdx, this._dummy.matrix);
-      instIdx++;
-    });
-    this._focusNeighborMesh.count   = instIdx;
-    this._focusNeighborMesh.instanceMatrix.needsUpdate = true;
-    this._focusNeighborMesh.visible = instIdx > 0;
-  }
-
-  /**
-   * Remove focus glow from all nodes.
-   */
   clearFocus() {
     this._focusedNodeId             = null;
     this._focusCenterMesh.visible   = false;
@@ -303,44 +215,45 @@ export class NodeRenderer {
   // ── Search API ──────────────────────────────────────────────────────────────
 
   /**
-   * Search nodes by multiple criteria. Returns a flat array of matching nodeIndices.
+   * Search nodes by multiple criteria. Returns matching nodeIndices.
    *
    * @param {{
-   *   text?:        string,   // substring match against nodeId (case-insensitive)
-   *   cluster?:     string,   // exact cluster name
-   *   subcategory?: string,   // exact subcategory match (e.g. "NBA", "BTC")
-   *   minProfit?:   number,   // profit_percent ≥ minProfit
-   *   maxProfit?:   number,   // profit_percent ≤ maxProfit
+   *   text?:       string,   // substring match against nodeId (case-insensitive)
+   *   live?:       boolean,  // filter by live status
+   *   minProfit?:  number,
+   *   maxProfit?:  number,
+   *   minConf?:    number,   // min confidence [0-1]
+   *   maxConf?:    number,
+   *   minRisk?:    number,   // min risk [0-1]
+   *   maxRisk?:    number,
    * }} criteria
    * @returns {number[]} nodeIndices
    */
   search(criteria = {}) {
-    const { text, cluster, subcategory, minProfit, maxProfit } = criteria;
-    const textLC = text?.trim().toLowerCase();
+    const { text, live, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk } = criteria;
+    const textLC     = text?.trim().toLowerCase();
     const hasProfMin = minProfit !== undefined && minProfit !== '';
     const hasProfMax = maxProfit !== undefined && maxProfit !== '';
+    const hasConfMin = minConf   !== undefined && minConf   !== '';
+    const hasConfMax = maxConf   !== undefined && maxConf   !== '';
+    const hasRiskMin = minRisk   !== undefined && minRisk   !== '';
+    const hasRiskMax = maxRisk   !== undefined && maxRisk   !== '';
 
-    // ── Pick the smallest candidate set via available indices ─────────────
-    // Priority: subcategory > cluster > full scan
-    let candidates = null;
-    if (subcategory && this._subcategoryIndex.has(subcategory)) {
-      candidates = this._subcategoryIndex.get(subcategory);
-      // If cluster also specified, keep only those in the right cluster
-      if (cluster) {
-        const clIdx = CLUSTER_NAMES.indexOf(cluster);
-        candidates = candidates.filter(i => this.clusterIndex[i] === clIdx);
-      }
-    } else if (cluster && this._clusterNodeLists.has(cluster)) {
-      candidates = this._clusterNodeLists.get(cluster);
-    }
+    // Use live index as candidate set when filtering live-only (saves 93% scan)
+    const candidates = (live === true) ? this._liveIndices : null;
 
-    // ── Filter candidates (or full range) ────────────────────────────────
     const results = [];
-    const n = this.nodeIds.length;
+    const n       = this.nodeIds.length;
 
     const check = (i) => {
-      if (hasProfMin && this.profit[i] < +minProfit) return;
-      if (hasProfMax && this.profit[i] > +maxProfit) return;
+      if (live === true  && !this.live[i]) return;
+      if (live === false &&  this.live[i]) return;
+      if (hasProfMin && this.profit[i]     < +minProfit) return;
+      if (hasProfMax && this.profit[i]     > +maxProfit) return;
+      if (hasConfMin && this.confidence[i] < +minConf)   return;
+      if (hasConfMax && this.confidence[i] > +maxConf)   return;
+      if (hasRiskMin && this.risk[i]       < +minRisk)   return;
+      if (hasRiskMax && this.risk[i]       > +maxRisk)   return;
       if (textLC && !this.nodeIds[i].toLowerCase().includes(textLC)) return;
       results.push(i);
     };
@@ -350,22 +263,17 @@ export class NodeRenderer {
     } else {
       for (let i = 0; i < n; i++) check(i);
     }
-
     return results;
   }
 
   /**
    * Apply search results:
-   *   - 0 matches  → clear, return 0
-   *   - 1 match    → focus (camera + glow) + return 1
-   *   - N matches  → light up all with search-result mesh + return N
-   * @param {number[]} indices
+   *   0 → clear  |  1 → focus+glow  |  N → glow all neon green
    * @returns {number} match count
    */
   applySearchResults(indices) {
     this.clearSearchResults();
     this.clearFocus();
-
     if (!indices.length) return 0;
 
     if (indices.length === 1) {
@@ -373,11 +281,10 @@ export class NodeRenderer {
       return 1;
     }
 
-    // Multiple — glow all
     const cap = Math.min(indices.length, this._searchResultMaxCount);
     for (let j = 0; j < cap; j++) {
       const ni = indices[j];
-      const s = this.scales[ni] * 1.5;
+      const s  = this.scales[ni] * 1.5;
       this._dummy.position.copy(this._nodePosition(ni));
       this._dummy.scale.set(s, s, s);
       this._dummy.rotation.set(0, 0, 0);
@@ -387,11 +294,9 @@ export class NodeRenderer {
     this._searchResultMesh.count = cap;
     this._searchResultMesh.instanceMatrix.needsUpdate = true;
     this._searchResultMesh.visible = true;
-
     return indices.length;
   }
 
-  /** Hide the search result glow mesh. */
   clearSearchResults() {
     if (this._searchResultMesh) {
       this._searchResultMesh.visible = false;
@@ -399,18 +304,12 @@ export class NodeRenderer {
     }
   }
 
-  /**
-   * Show the highlight mesh on top of the hovered node.
-   * Skips work if the index hasn't changed.
-   */
+  // ── Hover ────────────────────────────────────────────────────────────────────
+
   setHover(nodeIndex) {
     if (nodeIndex === this._hoveredIndex) return;
     this._hoveredIndex = nodeIndex;
-
-    if (nodeIndex < 0) {
-      this._highlightMesh.visible = false;
-      return;
-    }
+    if (nodeIndex < 0) { this._highlightMesh.visible = false; return; }
 
     const s = this.scales[nodeIndex] * 1.35;
     this._dummy.position.copy(this._nodePosition(nodeIndex));
@@ -422,36 +321,43 @@ export class NodeRenderer {
     this._highlightMesh.visible = true;
   }
 
-  clearHover() {
-    this.setHover(-1);
+  clearHover() { this.setHover(-1); }
+
+  // ── Raycasting ───────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the meshes the raycaster should test against.
+   * Single flat mesh — instanceId === nodeIndex.
+   */
+  getClusterMeshes() {
+    return this._nodeMesh ? [this._nodeMesh] : [];
   }
 
   /**
-   * Resolve an InstancedMesh raycast hit to a flat nodeIndex.
-   * Returns null when the hit is invalid.
+   * Resolve a raycast hit to a flat nodeIndex.
+   * With the single mesh, instanceId === nodeIndex directly.
    */
   resolveHit(mesh, instanceId) {
-    const list      = mesh.userData.nodeList;
-    const nodeIndex = list?.[instanceId];
-    return nodeIndex !== undefined ? nodeIndex : null;
+    if (instanceId === undefined || instanceId === null) return null;
+    return instanceId < this.nodeIds.length ? instanceId : null;
   }
 
   /**
-   * Return a plain object with display data for a node index.
-   * Keeps the interaction layer free of direct buffer access.
+   * Return display data for a node index.
    */
   getNodeData(nodeIndex) {
     return {
-      nodeId:  this.nodeIds[nodeIndex],
-      profit:  this.profit[nodeIndex],
-      scale:   this.scales[nodeIndex],
-      cluster: CLUSTER_NAMES[this.clusterIndex[nodeIndex]] ?? 'misc',
+      nodeId:     this.nodeIds[nodeIndex],
+      profit:     this.profit[nodeIndex],
+      confidence: this.confidence[nodeIndex],
+      risk:       this.risk[nodeIndex],
+      scale:      this.scales[nodeIndex],
+      live:       !!this.live[nodeIndex],
     };
   }
 
   /**
    * Build a flat Float32Array of [x1,y1,z1, x2,y2,z2, ...] pairs for edges.
-   * Used by EdgeRenderer to construct its BufferGeometry in one pass.
    */
   buildEdgeBuffer(connections) {
     const out = [];
@@ -467,46 +373,107 @@ export class NodeRenderer {
     return new Float32Array(out);
   }
 
-  /** Array of all cluster InstancedMeshes, used by the raycaster. */
-  getClusterMeshes() {
-    return [...this._clusterMeshes.values()];
-  }
-
-  /** Sorted list of all known cluster names. */
-  getClusterNames() {
-    return CLUSTER_NAMES;
-  }
-
-  /** Sorted list of all known subcategories. */
-  getSubcategories() {
-    return [...this._subcategoryIndex.keys()].sort();
-  }
-
   dispose() {
-    this._clearClusterMeshes();
-    this.scene.remove(this._nodeGroup);
-    if (this._highlightMesh) {
-      this.scene.remove(this._highlightMesh);
-      this._highlightMesh.material.dispose();
-    }
-    if (this._focusCenterMesh) {
-      this.scene.remove(this._focusCenterMesh);
-      this._focusCenterMesh.material.dispose();
-    }
-    if (this._focusNeighborMesh) {
-      this.scene.remove(this._focusNeighborMesh);
-      this._focusNeighborMesh.material.dispose();
-    }
+    this._clearNodeMesh();
     this._clearSearchMesh();
+    if (this._highlightMesh)     { this.scene.remove(this._highlightMesh);     this._highlightMesh.material.dispose(); }
+    if (this._focusCenterMesh)   { this.scene.remove(this._focusCenterMesh);   this._focusCenterMesh.material.dispose(); }
+    if (this._focusNeighborMesh) { this.scene.remove(this._focusNeighborMesh); this._focusNeighborMesh.material.dispose(); }
     this._geometry.dispose();
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────────
+  // ── Private ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Color scheme:
+   *   live → bright red
+   *   profit ≥ 3% → neon green
+   *   profit 0–3% → teal → green lerp
+   *   profit < 0  → dark blue → teal lerp
+   */
+  _getNodeColor(i, out) {
+    if (this.live[i]) { out.setHex(0xff3333); return; }
+    const p = this.profit[i];
+    if (p >= 3) {
+      out.setHex(0x39ff14);
+    } else if (p >= 0) {
+      this._colorA.setHex(0x4ecdc4);
+      this._colorB.setHex(0x39ff14);
+      out.lerpColors(this._colorA, this._colorB, p / 3);
+    } else {
+      const t = Math.max(0, (p + 5) / 5); // -5% → 0, 0% → 1
+      this._colorA.setHex(0x2d3561);
+      this._colorB.setHex(0x4ecdc4);
+      out.lerpColors(this._colorA, this._colorB, t);
+    }
+  }
+
+  _applyFocusGlow(nodeId) {
+    this._focusedNodeId = nodeId;
+
+    const ci = this._nodeIndexMap.get(nodeId);
+    if (ci !== undefined) {
+      const s = this.scales[ci] * 1.6;
+      this._dummy.position.copy(this._nodePosition(ci));
+      this._dummy.scale.set(s, s, s);
+      this._dummy.rotation.set(0, 0, 0);
+      this._dummy.updateMatrix();
+      this._focusCenterMesh.setMatrixAt(0, this._dummy.matrix);
+      this._focusCenterMesh.instanceMatrix.needsUpdate = true;
+      this._focusCenterMesh.count   = 1;
+      this._focusCenterMesh.visible = true;
+    }
+
+    const neighbors  = this._adjacency.get(nodeId) ?? new Set();
+    const neighborArr = [...neighbors].slice(0, 200);
+    let instIdx = 0;
+    neighborArr.forEach((nid) => {
+      const ni = this._nodeIndexMap.get(nid);
+      if (ni === undefined) return;
+      const s = this.scales[ni] * 1.45;
+      this._dummy.position.copy(this._nodePosition(ni));
+      this._dummy.scale.set(s, s, s);
+      this._dummy.rotation.set(0, 0, 0);
+      this._dummy.updateMatrix();
+      this._focusNeighborMesh.setMatrixAt(instIdx++, this._dummy.matrix);
+    });
+    this._focusNeighborMesh.count   = instIdx;
+    this._focusNeighborMesh.instanceMatrix.needsUpdate = true;
+    this._focusNeighborMesh.visible = instIdx > 0;
+  }
+
+  _nodePosition(i) {
+    return new THREE.Vector3(
+      this.positions[i * 3],
+      this.positions[i * 3 + 1],
+      this.positions[i * 3 + 2],
+    );
+  }
+
+  _writeDummy(i) {
+    this._dummy.position.set(
+      this.positions[i * 3],
+      this.positions[i * 3 + 1],
+      this.positions[i * 3 + 2],
+    );
+    const s = this.scales[i];
+    this._dummy.scale.set(s, s, s);
+    this._dummy.rotation.set(0, 0, 0);
+    this._dummy.updateMatrix();
+  }
+
+  _clearNodeMesh() {
+    if (this._nodeMesh) {
+      this.scene.remove(this._nodeMesh);
+      this._nodeMesh.material.dispose();
+      this._nodeMesh = null;
+    }
+  }
 
   _buildSearchMesh(n) {
     this._clearSearchMesh();
     const mat = new THREE.MeshStandardMaterial({
-      color:             0x39ff14, // neon green — unmistakable search highlight
+      color:             0x39ff14,
       emissive:          0x39ff14,
       emissiveIntensity: 1.4,
       roughness:         0.25,
@@ -530,73 +497,29 @@ export class NodeRenderer {
   }
 
   _buildFocusMeshes() {
-    // Focused center node — very bright white-gold emissive
-    const centerMat = new THREE.MeshStandardMaterial({
-      color:             0xffd700,
-      emissive:          0xffd700,
-      emissiveIntensity: 1.8,
-      roughness:         0.2,
-      metalness:         0.4,
-    });
-    this._focusCenterMesh = new THREE.InstancedMesh(this._geometry, centerMat, 1);
+    // Focused center node — gold
+    this._focusCenterMesh = new THREE.InstancedMesh(this._geometry, new THREE.MeshStandardMaterial({
+      color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 1.8, roughness: 0.2, metalness: 0.4,
+    }), 1);
     this._focusCenterMesh.visible     = false;
     this._focusCenterMesh.renderOrder = 2;
     this.scene.add(this._focusCenterMesh);
 
-    // Neighbor glow — softer cyan emissive, up to 200 instances
-    const neighborMat = new THREE.MeshStandardMaterial({
-      color:             0x00e5ff,
-      emissive:          0x00e5ff,
-      emissiveIntensity: 0.9,
-      roughness:         0.4,
-      metalness:         0.2,
-    });
-    this._focusNeighborMesh = new THREE.InstancedMesh(this._geometry, neighborMat, 200);
+    // Neighbor glow — cyan
+    this._focusNeighborMesh = new THREE.InstancedMesh(this._geometry, new THREE.MeshStandardMaterial({
+      color: 0x00e5ff, emissive: 0x00e5ff, emissiveIntensity: 0.9, roughness: 0.4, metalness: 0.2,
+    }), 200);
     this._focusNeighborMesh.visible     = false;
     this._focusNeighborMesh.renderOrder = 2;
     this.scene.add(this._focusNeighborMesh);
   }
 
   _buildHighlight() {
-    const mat = new THREE.MeshStandardMaterial({
-      color:            0xffffff,
-      emissive:         0xffffff,
-      emissiveIntensity: 0.6,
-      roughness:        0.4,
-      metalness:        0.1,
-    });
-    this._highlightMesh = new THREE.InstancedMesh(this._geometry, mat, 1);
+    this._highlightMesh = new THREE.InstancedMesh(this._geometry, new THREE.MeshStandardMaterial({
+      color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.6, roughness: 0.4, metalness: 0.1,
+    }), 1);
     this._highlightMesh.visible     = false;
     this._highlightMesh.renderOrder = 1;
     this.scene.add(this._highlightMesh);
-  }
-
-  _nodePosition(i) {
-    return new THREE.Vector3(
-      this.positions[i * 3],
-      this.positions[i * 3 + 1],
-      this.positions[i * 3 + 2],
-    );
-  }
-
-  /** Write this._dummy's matrix for nodeIndex i (no rotation). */
-  _writeDummy(i) {
-    this._dummy.position.set(
-      this.positions[i * 3],
-      this.positions[i * 3 + 1],
-      this.positions[i * 3 + 2],
-    );
-    const s = this.scales[i];
-    this._dummy.scale.set(s, s, s);
-    this._dummy.rotation.set(0, 0, 0);
-    this._dummy.updateMatrix();
-  }
-
-  _clearClusterMeshes() {
-    this._clusterMeshes.forEach((mesh) => {
-      this._nodeGroup.remove(mesh);
-      mesh.material.dispose();
-    });
-    this._clusterMeshes.clear();
   }
 }

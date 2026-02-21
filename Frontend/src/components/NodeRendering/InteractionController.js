@@ -99,13 +99,16 @@ export class InteractionController {
 
     const d          = this.nodeRenderer.getNodeData(nodeIndex);
     const profitSign = d.profit >= 0 ? '+' : '';
-    const profitCol  = d.profit >= 0 ? '#4ecdc4' : '#ff6b6b';
+    const profitCol  = d.profit >= 0 ? '#39ff14' : '#ff6b6b';
+    const liveTag    = d.live
+      ? `<span style="color:#ff3333;font-weight:bold"> ● LIVE</span>`
+      : '';
 
     this._tooltip.innerHTML =
-      `<b style="color:#fff;font-size:12px">${d.nodeId}</b><br>` +
-      `Cluster: <b>${d.cluster}</b><br>` +
+      `<b style="color:#fff;font-size:12px">${d.nodeId}</b>${liveTag}<br>` +
       `Profit: <span style="color:${profitCol}">${profitSign}${d.profit.toFixed(2)}%</span><br>` +
-      `Scale: ${d.scale.toFixed(2)}`;
+      `Confidence: ${(d.confidence * 100).toFixed(0)}%<br>` +
+      `Risk: ${(d.risk * 100).toFixed(0)}%`;
 
     this._tooltip.style.display = 'block';
     this._tooltip.style.left    = `${event.clientX + 16}px`;

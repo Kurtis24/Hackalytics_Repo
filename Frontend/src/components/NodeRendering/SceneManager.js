@@ -32,7 +32,7 @@ export class SceneManager {
 
     // ── Camera ────────────────────────────────────────────────────────────
     this.camera = new THREE.PerspectiveCamera(60, w / h, 1, 40000);
-    this.camera.position.set(0, 2000, 4000);
+    this.camera.position.set(0, 800, 1500);
 
     // ── Lights (minimal per spec) ─────────────────────────────────────────
     // One directional light only — no shadows, no HDR, no additive blending
@@ -54,6 +54,7 @@ export class SceneManager {
 
     // ── Axes ──────────────────────────────────────────────────────────────
     this._axisLines = [];
+    this._axisLabels = [];
     this._buildAxes();
 
     this._animationId   = null;
@@ -126,6 +127,11 @@ export class SceneManager {
       geo.dispose();
       mat.dispose();
     });
+    this._axisLabels.forEach((sprite) => {
+      this.scene.remove(sprite);
+      sprite.material.map.dispose();
+      sprite.material.dispose();
+    });
     this.renderer.dispose();
   }
 
@@ -163,6 +169,45 @@ export class SceneManager {
       this.scene.add(line);
       this._axisLines.push({ line, geo, mat });
     });
+
+    // Add axis labels
+    const labels = [
+      { text: 'Confidence', position: new THREE.Vector3(X_MAX + 80, 0, 0), color: 0xffffff },
+      { text: 'Profit', position: new THREE.Vector3(0, Y_MAX + 80, 0), color: 0xffffff },
+      { text: 'Risk', position: new THREE.Vector3(0, 0, Z_MAX + 80), color: 0xffffff },
+    ];
+
+    labels.forEach(({ text, position, color }) => {
+      const sprite = this._createTextSprite(text, color);
+      sprite.position.copy(position);
+      sprite.scale.set(100, 50, 1);
+      this.scene.add(sprite);
+      this._axisLabels.push(sprite);
+    });
+  }
+
+  _createTextSprite(text, color) {
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 256;
+
+    context.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+    context.font = 'bold 80px monospace';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(text, 256, 128);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0.8,
+    });
+
+    return new THREE.Sprite(material);
   }
 
   _onResize() {

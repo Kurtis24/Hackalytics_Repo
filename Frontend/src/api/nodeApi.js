@@ -79,3 +79,42 @@ export async function deleteNode(nodeId) {
     throw error;
   }
 }
+
+/**
+ * Check all nodes and update their live status based on today's date
+ * Marks nodes as live if their date matches today's date
+ * Returns the updated nodes with live status
+ */
+export async function updateLiveStatus() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/nodes/live/update`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update live status: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error updating live status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete all nodes whose date is in the past
+ * Returns the count of deleted nodes
+ */
+export async function deletePastNodes() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/nodes/past`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to delete past nodes: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error deleting past nodes:', error);
+    throw error;
+  }
+}

@@ -66,14 +66,31 @@ function generateNode(index) {
   const [home_team, away_team] = pick(teams[category]);
   const market_type = pick(marketTypes);
   
-  const profit_score = random(0.1, 0.95);
+  const isNegative = Math.random() < 0.25;
+  
+  let profit_score;
+  if (isNegative) {
+    profit_score = random(-0.5, -0.05);
+  } else {
+    profit_score = random(0.05, 0.95);
+  }
+  
   const risk_score = random(0.15, 0.85);
   const confidence = random(0.35, 0.90);
   const volume = randomInt(50000, 500000);
   
-  const dayOffset = randomInt(0, 30);
-  const hour = randomInt(12, 23);
-  const date = new Date(2025, 9, 20 + dayOffset, hour, 0, 0);
+  const isLive = profit_score > 0.8 && risk_score < 0.4;
+  
+  let date;
+  if (isLive) {
+    date = new Date();
+  } else {
+    const now = new Date();
+    const daysInFuture = randomInt(1, 30);
+    const hour = randomInt(12, 23);
+    date = new Date(now.getTime() + daysInFuture * 24 * 60 * 60 * 1000);
+    date.setHours(hour, 0, 0, 0);
+  }
   
   const book1 = pick(sportsbooks);
   let book2 = pick(sportsbooks);

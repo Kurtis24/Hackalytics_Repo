@@ -45,11 +45,16 @@ export class EdgeRenderer {
 
     const material = new LineMaterial({
       color:      0x3a3a4a,
-      linewidth:  0.8,          // CSS pixels — thin base connectors
+      linewidth:  0.8,
       resolution: this._resolution,
+      dashed:     true,
+      dashScale:  50,
+      dashSize:   3,
+      gapSize:    3,
     });
 
     this._mesh = new LineSegments2(geometry, material);
+    this._mesh.computeLineDistances();
     this._mesh.renderOrder = -1;
     this.scene.add(this._mesh);
   }
@@ -76,11 +81,16 @@ export class EdgeRenderer {
 
     const material = new LineMaterial({
       color:      0x00e5ff,
-      linewidth:  3,            // CSS pixels — clearly thicker on focus
+      linewidth:  3,
       resolution: this._resolution,
+      dashed:     true,
+      dashScale:  50,
+      dashSize:   3,
+      gapSize:    3,
     });
 
     this._focusMesh = new LineSegments2(geometry, material);
+    this._focusMesh.computeLineDistances();
     this._focusMesh.renderOrder = 1;
     this.scene.add(this._focusMesh);
   }

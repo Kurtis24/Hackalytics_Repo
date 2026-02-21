@@ -18,7 +18,20 @@ export default function NodeRender() {
   const [maxConf,    setMaxConf]    = useState('');
   const [minRisk,    setMinRisk]    = useState('');
   const [maxRisk,    setMaxRisk]    = useState('');
+  const [minVolume,  setMinVolume]  = useState('');
+  const [maxVolume,  setMaxVolume]  = useState('');
+  const [sport,      setSport]      = useState('');
+  const [homeTeam,   setHomeTeam]   = useState('');
+  const [awayTeam,   setAwayTeam]   = useState('');
+  const [marketType, setMarketType] = useState('');
+  const [sportsbook, setSportsbook] = useState('');
+  const [dateFrom,   setDateFrom]   = useState('');
+  const [dateTo,     setDateTo]     = useState('');
   const [resultInfo, setResultInfo] = useState(null);
+  
+  // ── UI toggle state ─────────────────────────────────────────────────────────
+  const [showSearch, setShowSearch] = useState(true);
+  const [showLegend, setShowLegend] = useState(true);
 
   // ── Scene setup ─────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -53,13 +66,23 @@ export default function NodeRender() {
     if (maxConf   !== '')  criteria.maxConf   = +maxConf;
     if (minRisk   !== '')  criteria.minRisk   = +minRisk;
     if (maxRisk   !== '')  criteria.maxRisk   = +maxRisk;
+    if (minVolume !== '')  criteria.minVolume = +minVolume;
+    if (maxVolume !== '')  criteria.maxVolume = +maxVolume;
+    if (sport.trim())      criteria.sport     = sport.trim();
+    if (homeTeam.trim())   criteria.homeTeam  = homeTeam.trim();
+    if (awayTeam.trim())   criteria.awayTeam  = awayTeam.trim();
+    if (marketType.trim()) criteria.marketType = marketType.trim();
+    if (sportsbook.trim()) criteria.sportsbook = sportsbook.trim();
+    if (dateFrom.trim())   criteria.dateFrom  = dateFrom.trim();
+    if (dateTo.trim())     criteria.dateTo    = dateTo.trim();
 
     if (!Object.keys(criteria).length) return;
 
     const indices = manager.nodeRenderer.search(criteria);
     const count   = manager.applySearch(indices);
     setResultInfo({ count });
-  }, [searchText, liveOnly, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk]);
+  }, [searchText, liveOnly, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk, 
+      minVolume, maxVolume, sport, homeTeam, awayTeam, marketType, sportsbook, dateFrom, dateTo]);
 
   const handleClear = useCallback(() => {
     managerRef.current?.clearSearch();
@@ -68,6 +91,10 @@ export default function NodeRender() {
     setMinProfit(''); setMaxProfit('');
     setMinConf('');   setMaxConf('');
     setMinRisk('');   setMaxRisk('');
+    setMinVolume(''); setMaxVolume('');
+    setSport('');     setHomeTeam('');
+    setAwayTeam('');  setMarketType('');
+    setSportsbook(''); setDateFrom(''); setDateTo('');
   }, []);
 
   const onKeyDown = useCallback((e) => {
@@ -108,15 +135,37 @@ export default function NodeRender() {
       <canvas ref={canvasRef}
         style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }} />
 
-      {/* ── Search panel ────────────────────────────────────────────────────── */}
+      {/* ── Search toggle button ───────────────────────────────────────────────── */}
       {ready && (
+        <button
+          onClick={() => setShowSearch(!showSearch)}
+          style={{
+            position: 'absolute', top: 16, right: 16, zIndex: 11,
+            background: 'rgba(8,8,20,0.90)',
+            border: '1px solid rgba(255,255,255,0.20)',
+            borderRadius: 8,
+            color: '#fff',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            fontWeight: 'bold',
+            padding: '10px 16px',
+            cursor: 'pointer',
+          }}
+        >
+          {showSearch ? '✕ Hide Search' : '🔍 Search'}
+        </button>
+      )}
+
+      {/* ── Search panel ────────────────────────────────────────────────────── */}
+      {ready && showSearch && (
         <div style={{
-          position: 'absolute', top: 16, right: 16, width: 230,
+          position: 'absolute', top: 60, right: 16, width: 230, maxHeight: 'calc(100vh - 76px)',
           background: 'rgba(8,8,20,0.90)', border: '1px solid rgba(255,255,255,0.10)',
           borderRadius: 8, padding: '12px 14px', fontFamily: 'monospace', fontSize: 11,
           color: '#ccc', zIndex: 10, display: 'flex', flexDirection: 'column', gap: 7,
+          overflowY: 'auto',
         }}>
-          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 2 }}>Search nodes</div>
+          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 2 }}>Search filters</div>
 
           {/* Text */}
           <input style={inputStyle} placeholder="node ID substring…"
@@ -129,6 +178,40 @@ export default function NodeRender() {
               style={{ accentColor: '#ff3333', cursor: 'pointer' }} />
             <span style={{ color: liveOnly ? '#ff3333' : '#aaa' }}>Live only</span>
           </label>
+
+          {/* Sport */}
+          <div style={label}>Sport</div>
+          <select style={inputStyle} value={sport} onChange={e => setSport(e.target.value)}>
+            <option value="">All sports</option>
+            <option value="baseball">Baseball</option>
+            <option value="football">Football</option>
+            <option value="basketball">Basketball</option>
+            <option value="hockey">Hockey</option>
+          </select>
+
+          {/* Home Team */}
+          <div style={label}>Home Team</div>
+          <input style={inputStyle} placeholder="team name…"
+            value={homeTeam} onChange={e => setHomeTeam(e.target.value)} onKeyDown={onKeyDown} />
+
+          {/* Away Team */}
+          <div style={label}>Away Team</div>
+          <input style={inputStyle} placeholder="team name…"
+            value={awayTeam} onChange={e => setAwayTeam(e.target.value)} onKeyDown={onKeyDown} />
+
+          {/* Market Type */}
+          <div style={label}>Market Type</div>
+          <select style={inputStyle} value={marketType} onChange={e => setMarketType(e.target.value)}>
+            <option value="">All types</option>
+            <option value="spread">Spread</option>
+            <option value="moneyline">Moneyline</option>
+            <option value="over/under">Over/Under</option>
+          </select>
+
+          {/* Sportsbook */}
+          <div style={label}>Sportsbook</div>
+          <input style={inputStyle} placeholder="sportsbook name…"
+            value={sportsbook} onChange={e => setSportsbook(e.target.value)} onKeyDown={onKeyDown} />
 
           {/* Profit */}
           <div style={label}>Profit %</div>
@@ -157,6 +240,24 @@ export default function NodeRender() {
               value={maxRisk} onChange={e => setMaxRisk(e.target.value)} onKeyDown={onKeyDown} />
           </div>
 
+          {/* Volume */}
+          <div style={label}>Volume ($)</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input style={halfInput} type="number" placeholder="min"
+              value={minVolume} onChange={e => setMinVolume(e.target.value)} onKeyDown={onKeyDown} />
+            <input style={halfInput} type="number" placeholder="max"
+              value={maxVolume} onChange={e => setMaxVolume(e.target.value)} onKeyDown={onKeyDown} />
+          </div>
+
+          {/* Date Range */}
+          <div style={label}>Date Range</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <input style={inputStyle} type="date"
+              value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input style={inputStyle} type="date"
+              value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+
           {/* Buttons */}
           <div style={{ display: 'flex', gap: 6 }}>
             <button style={btn(true)}  onClick={handleSearch}>Search</button>
@@ -179,50 +280,107 @@ export default function NodeRender() {
         </div>
       )}
 
-      {/* ── Legend / axis key ───────────────────────────────────────────────── */}
-      <div style={{
-        position: 'absolute', bottom: 16, left: 16,
-        background: 'rgba(8,8,20,0.82)', border: '1px solid rgba(255,255,255,0.10)',
-        borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', fontSize: 11,
-        color: '#ccc', lineHeight: 1.9, pointerEvents: 'none',
-      }}>
-        <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Axes</div>
-        {[
-          { label: 'X  Confidence →', color: '#ffffff' },
-          { label: 'Y  Profit →',     color: '#ffffff' },
-          { label: 'Z  Risk →',       color: '#ffffff' },
-        ].map(({ label: l, color }) => (
-          <div key={l} style={{ color }}>{l}</div>
-        ))}
+      {/* ── Show All Nodes button ─────────────────────────────────────────────── */}
+      {ready && resultInfo !== null && showSearch && (
+        <div style={{
+          position: 'absolute', top: 60, right: 262, zIndex: 10,
+        }}>
+          <button
+            onClick={handleClear}
+            style={{
+              background: 'rgba(8,8,20,0.90)',
+              border: '1px solid rgba(255,255,255,0.20)',
+              borderRadius: 8,
+              color: '#39ff14',
+              fontSize: 12,
+              fontFamily: 'monospace',
+              fontWeight: 'bold',
+              padding: '10px 16px',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.target.style.background = 'rgba(57,255,20,0.15)';
+              e.target.style.borderColor = 'rgba(57,255,20,0.50)';
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'rgba(8,8,20,0.90)';
+              e.target.style.borderColor = 'rgba(255,255,255,0.20)';
+            }}
+          >
+            Show All Nodes
+          </button>
+        </div>
+      )}
 
-        <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8, paddingTop: 8 }}>
-          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Color</div>
+      {/* ── Legend toggle button ──────────────────────────────────────────────── */}
+      {ready && (
+        <button
+          onClick={() => setShowLegend(!showLegend)}
+          style={{
+            position: 'absolute', top: 16, left: 16, zIndex: 11,
+            background: 'rgba(8,8,20,0.90)',
+            border: '1px solid rgba(255,255,255,0.20)',
+            borderRadius: 8,
+            color: '#fff',
+            fontSize: 12,
+            fontFamily: 'monospace',
+            fontWeight: 'bold',
+            padding: '10px 16px',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+          }}
+        >
+          {showLegend ? '✕ Hide Legend' : 'ℹ Legend'}
+        </button>
+      )}
+
+      {/* ── Legend / axis key ───────────────────────────────────────────────── */}
+      {ready && showLegend && (
+        <div style={{
+          position: 'absolute', top: 60, left: 16,
+          background: 'rgba(8,8,20,0.82)', border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 8, padding: '10px 14px', fontFamily: 'monospace', fontSize: 11,
+          color: '#ccc', lineHeight: 1.9, pointerEvents: 'none',
+        }}>
+          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Axes</div>
           {[
-            { color: '#ff7043', label: 'Baseball' },
-            { color: '#42a5f5', label: 'Football' },
-            { color: '#ffca28', label: 'Basketball' },
-            { color: '#26c6da', label: 'Hockey' },
-          ].map(({ color, label: l }) => (
-            <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <span style={{
-                display: 'inline-block', width: 10, height: 10,
-                background: color, borderRadius: '50%', flexShrink: 0,
-              }} />
-              {l}
-            </div>
+            { label: 'X  Confidence →', color: '#ffffff' },
+            { label: 'Y  Profit →',     color: '#ffffff' },
+            { label: 'Z  Risk →',       color: '#ffffff' },
+          ].map(({ label: l, color }) => (
+            <div key={l} style={{ color }}>{l}</div>
           ))}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <span style={{
-              display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-              border: '1.5px solid #ffffff', flexShrink: 0,
-            }} />
-            Live
-          </div>
-          <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
-            Size = volume · Hover to inspect · Click to focus
+
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8, paddingTop: 8 }}>
+            <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Color</div>
+            {[
+              { color: '#ff7043', label: 'Baseball' },
+              { color: '#42a5f5', label: 'Football' },
+              { color: '#ffca28', label: 'Basketball' },
+              { color: '#26c6da', label: 'Hockey' },
+            ].map(({ color, label: l }) => (
+              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                <span style={{
+                  display: 'inline-block', width: 10, height: 10,
+                  background: color, borderRadius: '50%', flexShrink: 0,
+                }} />
+                {l}
+              </div>
+            ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              <span style={{
+                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                border: '1.5px solid #ff0000', flexShrink: 0,
+              }} />
+              Live
+            </div>
+            <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
+              Size = volume · Hover to inspect · Click to focus
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

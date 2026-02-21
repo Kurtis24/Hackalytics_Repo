@@ -20,6 +20,14 @@ export function adaptNodeForScene(apiNode, index = 0) {
       risk: apiNode.risk_score,
       volume: apiNode.volume,
     },
+    rawData: {
+      home_team: apiNode.home_team,
+      away_team: apiNode.away_team,
+      market_type: apiNode.market_type,
+      date: apiNode.Date,
+      sportsbooks: apiNode.sportsbooks,
+      volume: apiNode.volume,
+    },
   };
 }
 
@@ -31,21 +39,34 @@ export function adaptNodesForScene(apiNodes) {
 }
 
 /**
- * Generate simple connections between nodes (sparse graph)
+ * Generate connections between nodes that share team names
+ * Connects nodes if they share either home_team or away_team
  */
 export function generateConnections(nodes) {
   const connections = [];
   const n = nodes.length;
   
   for (let i = 0; i < n; i++) {
-    const connectionCount = Math.min(2, Math.floor(Math.random() * 3));
+    const nodeA = nodes[i];
+    const homeA = nodeA.rawData?.home_team;
+    const awayA = nodeA.rawData?.away_team;
     
-    for (let j = 0; j < connectionCount; j++) {
-      const targetIndex = Math.floor(Math.random() * n);
-      if (targetIndex !== i) {
+    if (!homeA || !awayA) continue;
+    
+    for (let j = i + 1; j < n; j++) {
+      const nodeB = nodes[j];
+      const homeB = nodeB.rawData?.home_team;
+      const awayB = nodeB.rawData?.away_team;
+      
+      if (!homeB || !awayB) continue;
+      
+      const sharesTeam = homeA === homeB || homeA === awayB || 
+                         awayA === homeB || awayA === awayB;
+      
+      if (sharesTeam) {
         connections.push({
-          source: nodes[i].node_id,
-          target: nodes[targetIndex].node_id,
+          source: nodeA.node_id,
+          target: nodeB.node_id,
         });
       }
     }

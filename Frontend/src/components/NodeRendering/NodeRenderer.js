@@ -23,8 +23,8 @@ export class NodeRenderer {
     this.scene            = scene;
     this.cameraController = cameraController;
 
-    // Shared low-poly geometry (IcosahedronGeometry detail=0 → 20 tris)
-    this._geometry = new THREE.IcosahedronGeometry(1, 0);
+    // Shared sphere geometry
+    this._geometry = new THREE.SphereGeometry(1, 16, 16);
 
     // ── Flat buffers (allocated in initialize) ────────────────────────────
     this.positions   = null; // Float32Array  [x,y,z per node]
@@ -35,6 +35,7 @@ export class NodeRenderer {
     this.risk        = null; // Float32Array  [0-1 per node]
     this.live        = null; // Uint8Array    [0/1 per node]
     this.nodeIds     = [];   // string[]
+    this.rawData     = [];   // raw node data for extended search
 
     // ── Lookup maps ───────────────────────────────────────────────────────
     this._nodeIndexMap = new Map(); // nodeId → flat index
@@ -102,6 +103,7 @@ export class NodeRenderer {
     this.live       = new Uint8Array(n);
     this.sports     = new Uint8Array(n);
     this.nodeIds    = new Array(n);
+    this.rawData    = new Array(n);
 
     // ── Pass 1: fill flat buffers & build indices ─────────────────────────
     for (let i = 0; i < n; i++) {
@@ -109,6 +111,7 @@ export class NodeRenderer {
       const m    = node.metrics ?? {};
 
       this.nodeIds[i]    = node.node_id;
+      this.rawData[i]    = node.rawData || {};
       this._nodeIndexMap.set(node.node_id, i);
 
       const conf   = Math.min(0.99, Math.max(0, m.confidence ?? 0.5));
@@ -128,9 +131,9 @@ export class NodeRenderer {
       this.positions[i * 3 + 1] = prof * PROFIT_SCALE;
       this.positions[i * 3 + 2] = rsk  * RISK_SCALE  + RISK_OFFSET;
 
-      // Scale from volume — sqrt gives dramatic size spread across the data range
-      // vol range: ~2 000 – 500 000  →  scale range: ~1.2 – 7
-      this.scales[i] = 1 + Math.pow(vol / 500000, 0.5) * 6;
+      // Scale from volume — more dramatic size spread
+      // vol range: ~50 000 – 500 000  →  scale range: ~2 – 12
+      this.scales[i] = 2 + Math.pow(vol / 500000, 0.4) * 10;
 
       if (isLive) this._liveIndices.push(i);
     }
@@ -175,7 +178,7 @@ export class NodeRenderer {
     this.profit[i]     = prof;
     this.risk[i]       = rsk;
     this.live[i]       = node.live ? 1 : 0;
-    this.scales[i]     = 1 + Math.pow(vol / 500000, 0.5) * 6;
+    this.scales[i]     = 2 + Math.pow(vol / 500000, 0.4) * 10;
 
     this.positions[i * 3]     = conf * CONF_SCALE  + CONF_OFFSET;
     this.positions[i * 3 + 1] = prof * PROFIT_SCALE;
@@ -229,7 +232,8 @@ export class NodeRenderer {
    * Search nodes by multiple criteria. Returns matching nodeIndices.
    */
   search(criteria = {}) {
-    const { text, live, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk } = criteria;
+    const { text, live, minProfit, maxProfit, minConf, maxConf, minRisk, maxRisk, 
+            sport, homeTeam, awayTeam, marketType, sportsbook, minVolume, maxVolume, dateFrom, dateTo } = criteria;
     const textLC     = text?.trim().toLowerCase();
     const hasProfMin = minProfit !== undefined && minProfit !== '';
     const hasProfMax = maxProfit !== undefined && maxProfit !== '';
@@ -237,6 +241,8 @@ export class NodeRenderer {
     const hasConfMax = maxConf   !== undefined && maxConf   !== '';
     const hasRiskMin = minRisk   !== undefined && minRisk   !== '';
     const hasRiskMax = maxRisk   !== undefined && maxRisk   !== '';
+    const hasVolMin  = minVolume !== undefined && minVolume !== '';
+    const hasVolMax  = maxVolume !== undefined && maxVolume !== '';
 
     const candidates = (live === true) ? this._liveIndices : null;
     const results = [];
@@ -252,6 +258,28 @@ export class NodeRenderer {
       if (hasRiskMin && this.risk[i]       < +minRisk)   return;
       if (hasRiskMax && this.risk[i]       > +maxRisk)   return;
       if (textLC && !this.nodeIds[i].toLowerCase().includes(textLC)) return;
+
+      const raw = this.rawData[i] || {};
+      const sportIndex = this.sports[i];
+      const sportName = ['baseball', 'football', 'basketball', 'hockey'][sportIndex];
+      
+      if (sport && sport !== sportName) return;
+      if (homeTeam && !raw.home_team?.toLowerCase().includes(homeTeam.toLowerCase())) return;
+      if (awayTeam && !raw.away_team?.toLowerCase().includes(awayTeam.toLowerCase())) return;
+      if (marketType && raw.market_type !== marketType) return;
+      if (sportsbook && !raw.sportsbooks?.some(sb => sb.name.toLowerCase().includes(sportsbook.toLowerCase()))) return;
+      
+      const nodeVolume = raw.volume || this.scales[i];
+      if (hasVolMin && nodeVolume < +minVolume) return;
+      if (hasVolMax && nodeVolume > +maxVolume) return;
+      
+      if (dateFrom || dateTo) {
+        const nodeDate = raw.date ? new Date(raw.date) : null;
+        if (!nodeDate) return;
+        if (dateFrom && nodeDate < new Date(dateFrom)) return;
+        if (dateTo && nodeDate > new Date(dateTo)) return;
+      }
+
       results.push(i);
     };
 
@@ -499,7 +527,7 @@ export class NodeRenderer {
     if (!liveCount) return;
 
     this._liveRingGeometry = new THREE.TorusGeometry(1, 0.045, 6, 48);
-    const mat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
 
     this._liveRingMesh = new THREE.InstancedMesh(this._liveRingGeometry, mat, liveCount);
 

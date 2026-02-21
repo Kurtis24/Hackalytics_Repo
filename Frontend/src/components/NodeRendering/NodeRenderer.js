@@ -364,6 +364,10 @@ export class NodeRenderer {
   }
 
   getNodeData(nodeIndex) {
+    const raw = this.rawData[nodeIndex] || {};
+    const sportIndex = this.sports[nodeIndex];
+    const sportName = ['baseball', 'football', 'basketball', 'hockey'][sportIndex];
+    
     return {
       nodeId:     this.nodeIds[nodeIndex],
       profit:     this.profit[nodeIndex],
@@ -371,6 +375,13 @@ export class NodeRenderer {
       risk:       this.risk[nodeIndex],
       scale:      this.scales[nodeIndex],
       live:       !!this.live[nodeIndex],
+      sport:      sportName,
+      homeTeam:   raw.home_team,
+      awayTeam:   raw.away_team,
+      marketType: raw.market_type,
+      date:       raw.date,
+      volume:     raw.volume,
+      sportsbooks: raw.sportsbooks || [],
     };
   }
 

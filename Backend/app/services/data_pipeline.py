@@ -38,7 +38,6 @@ class DataCollectionPipeline:
         self,
         client: SportsbookAPIClient,
         output_dir: str = "data/raw",
-
     ) -> None:
         self._client = client
         self._output_dir = Path(output_dir)

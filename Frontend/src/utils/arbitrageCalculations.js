@@ -121,3 +121,76 @@ export function calculateArbitrageMetrics(nodeData) {
     finalVolume: '$' + finalVolume.toLocaleString(),
   };
 }
+
+/**
+ * SIMULATOR-SPECIFIC CALCULATIONS
+ */
+
+/**
+ * Calculate expected profit for a given bet amount using backend arbitrage logic
+ * Based on Backend/app/services/arbitrage_service.py lines 154-163
+ * @param {number} betAmount - The total amount to bet
+ * @param {Array} sportsbooks - Array of sportsbook objects with odds
+ * @returns {number} Guaranteed profit in dollars
+ */
+export function calculateExpectedProfit(betAmount, sportsbooks) {
+  if (!sportsbooks || sportsbooks.length < 2 || betAmount === 0) return 0;
+  
+  const dec1 = toDecimal(sportsbooks[0].odds);
+  const dec2 = toDecimal(sportsbooks[1].odds);
+  
+  const arbSum = (1 / dec1) + (1 / dec2);
+  
+  if (arbSum === 0) return 0;
+  
+  // Proportional stake split (backend lines 154-159)
+  const stake1 = Math.round(betAmount * (1 / dec1) / arbSum);
+  const stake2 = Math.round(betAmount * (1 / dec2) / arbSum);
+  
+  // Calculate payouts (backend lines 161-162)
+  const payout1 = stake1 * dec1;
+  const payout2 = stake2 * dec2;
+  
+  // Guaranteed profit is minimum payout minus total stake (backend line 163)
+  const guaranteedProfit = Math.round(Math.min(payout1, payout2) - betAmount);
+  
+  return guaranteedProfit;
+}
+
+/**
+ * Calculate slippage risk based on bet size vs market ceiling
+ * @param {number} betAmount - The amount to bet
+ * @param {number} marketCeiling - Maximum stake before position detection
+ * @returns {number} Slippage risk percentage (0-100)
+ */
+export function calculateSlippageRisk(betAmount, marketCeiling) {
+  if (marketCeiling === 0) return 100;
+  const ratio = betAmount / marketCeiling;
+  return Math.min(ratio * 100, 100);
+}
+
+/**
+ * Calculate optimal bet split between two sportsbooks
+ * @param {number} betAmount - Total amount to bet
+ * @param {Array} sportsbooks - Array of sportsbook objects with odds
+ * @returns {Object} Split amounts and sportsbook names
+ */
+export function calculateBetSplit(betAmount, sportsbooks) {
+  if (!sportsbooks || sportsbooks.length < 2) {
+    return { book1: 0, book2: 0, book1Name: '', book2Name: '' };
+  }
+  
+  const dec1 = toDecimal(sportsbooks[0].odds);
+  const dec2 = toDecimal(sportsbooks[1].odds);
+  
+  const total = dec1 + dec2;
+  const book1Amount = Math.round(betAmount * (dec2 / total));
+  const book2Amount = betAmount - book1Amount;
+  
+  return {
+    book1: book1Amount,
+    book2: book2Amount,
+    book1Name: sportsbooks[0].name,
+    book2Name: sportsbooks[1].name,
+  };
+}

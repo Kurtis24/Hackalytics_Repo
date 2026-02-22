@@ -2,8 +2,7 @@
 Delta Lake data-fetching service.
 
 Pulls upcoming games and odds from Databricks Delta Lake tables via SQL.
-Falls back to sample data when Databricks is unavailable so the API
-works for frontend testing before live tables are finalized.
+Falls back to sample data when Databricks is unavailable or not configured.
 """
 
 from __future__ import annotations
@@ -12,14 +11,23 @@ import logging
 from typing import Optional
 
 from app.config import settings
-from app.services.databricks_client import DatabricksServingClient
 
 logger = logging.getLogger(__name__)
 
-_client: DatabricksServingClient | None = None
+
+def _databricks_available() -> bool:
+    """Return True only if Databricks credentials AND warehouse ID are configured."""
+    return bool(
+        settings.databricks_client_id
+        and settings.databricks_client_secret
+        and settings.databricks_warehouse_id
+    )
 
 
-def _get_client() -> DatabricksServingClient:
+def _get_client():
+    """Lazy-init the Databricks client (only called when credentials exist)."""
+    from app.services.databricks_client import DatabricksServingClient
+
     global _client
     if _client is None:
         _client = DatabricksServingClient(
@@ -28,6 +36,9 @@ def _get_client() -> DatabricksServingClient:
             client_secret=settings.databricks_client_secret,
         )
     return _client
+
+
+_client = None
 
 
 # ── Sample / fallback data ───────────────────────────────────────────
@@ -72,18 +83,20 @@ SAMPLE_ODDS = {
 # ── Public API ────────────────────────────────────────────────────────
 
 def fetch_upcoming_games(category: Optional[str] = None) -> list[dict]:
-    """Fetch upcoming games from Delta Lake, with optional category filter."""
-    try:
-        where = ""
-        if category:
-            where = f" WHERE category = '{category}'"
-        sql = f"SELECT * FROM {settings.delta_games_table}{where} ORDER BY start_time"
-        rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
-        if rows:
-            return rows
-    except Exception:
-        logger.warning("Databricks unavailable — using sample game data", exc_info=True)
+    """Fetch upcoming games. Uses sample data when Databricks is not configured."""
+    if _databricks_available():
+        try:
+            where = ""
+            if category:
+                where = f" WHERE category = '{category}'"
+            sql = f"SELECT * FROM {settings.delta_games_table}{where} ORDER BY start_time"
+            rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
+            if rows:
+                return rows
+        except Exception:
+            logger.warning("Databricks unavailable — using sample game data")
 
+    logger.info("Using sample game data (Databricks not configured)")
     games = SAMPLE_GAMES
     if category:
         games = [g for g in games if g.get("category", "").lower() == category.lower()]
@@ -92,35 +105,37 @@ def fetch_upcoming_games(category: Optional[str] = None) -> list[dict]:
 
 def fetch_odds_for_game(game_id: str) -> list[dict]:
     """Fetch all odds rows for a single game."""
-    try:
-        sql = (
-            f"SELECT * FROM {settings.delta_odds_table} "
-            f"WHERE game_id = '{game_id}'"
-        )
-        rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
-        if rows:
-            return rows
-    except Exception:
-        logger.warning("Databricks unavailable — using sample odds data", exc_info=True)
+    if _databricks_available():
+        try:
+            sql = (
+                f"SELECT * FROM {settings.delta_odds_table} "
+                f"WHERE game_id = '{game_id}'"
+            )
+            rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
+            if rows:
+                return rows
+        except Exception:
+            logger.warning("Databricks unavailable — using sample odds data")
 
     return SAMPLE_ODDS.get(game_id, [])
 
 
 def fetch_odds_for_games(game_ids: list[str]) -> dict[str, list[dict]]:
     """Fetch odds for multiple games, keyed by game_id."""
-    try:
-        ids_str = ", ".join(f"'{gid}'" for gid in game_ids)
-        sql = (
-            f"SELECT * FROM {settings.delta_odds_table} "
-            f"WHERE game_id IN ({ids_str})"
-        )
-        rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
-        if rows:
-            result: dict[str, list[dict]] = {}
-            for row in rows:
-                result.setdefault(row["game_id"], []).append(row)
-            return result
-    except Exception:
-        logger.warning("Databricks unavailable — using sample odds data", exc_info=True)
+    if _databricks_available():
+        try:
+            ids_str = ", ".join(f"'{gid}'" for gid in game_ids)
+            sql = (
+                f"SELECT * FROM {settings.delta_odds_table} "
+                f"WHERE game_id IN ({ids_str})"
+            )
+            rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
+            if rows:
+                result: dict[str, list[dict]] = {}
+                for row in rows:
+                    result.setdefault(row["game_id"], []).append(row)
+                return result
+        except Exception:
+            logger.warning("Databricks unavailable — using sample odds data")
 
     return {gid: SAMPLE_ODDS.get(gid, []) for gid in game_ids}

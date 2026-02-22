@@ -12,12 +12,12 @@ export default function MLLoadingOverlay() {
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: 'rgba(7, 7, 15, 0.97)',
+        background: '#000',
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 28,
+        gap: 40,
       }}
     >
       <style>{`
@@ -25,73 +25,126 @@ export default function MLLoadingOverlay() {
           to { transform: rotate(360deg); }
         }
         @keyframes ml-pulse {
-          0%, 100% { opacity: 0.4; transform: scale(0.98); }
-          50% { opacity: 1; transform: scale(1); }
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
         }
-        @keyframes ml-dots {
-          0%, 20% { content: '.'; }
-          40% { content: '..'; }
-          60%, 100% { content: '...'; }
+        @keyframes ml-glow {
+          0%, 100% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.4), 0 0 40px rgba(59, 130, 246, 0.2); }
+          50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6), 0 0 60px rgba(59, 130, 246, 0.3); }
+        }
+        @keyframes ml-expand {
+          0% { width: 0%; }
+          100% { width: 100%; }
+        }
+        @keyframes ml-fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         .ml-loading-ring {
-          width: 72px;
-          height: 72px;
-          border: 4px solid rgba(100, 149, 237, 0.2);
-          border-top-color: #6495ed;
+          width: 100px;
+          height: 100px;
+          border: 3px solid transparent;
+          border-top-color: #3b82f6;
+          border-right-color: #3b82f6;
           border-radius: 50%;
-          animation: ml-spin 0.9s linear infinite;
+          animation: ml-spin 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+          position: relative;
         }
-        .ml-loading-ring-outer {
-          width: 88px;
-          height: 88px;
-          border: 3px solid rgba(57, 255, 20, 0.15);
-          border-bottom-color: rgba(57, 255, 20, 0.6);
+        .ml-loading-ring::before {
+          content: '';
+          position: absolute;
+          inset: -3px;
           border-radius: 50%;
-          animation: ml-spin 1.4s linear infinite reverse;
-          display: flex;
-          align-items: center;
-          justify-content: center;
+          border: 3px solid transparent;
+          border-bottom-color: #60a5fa;
+          border-left-color: #60a5fa;
+          animation: ml-spin 1.8s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite reverse;
+        }
+        .ml-loading-ring::after {
+          content: '';
+          position: absolute;
+          inset: 10px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
+          animation: ml-pulse 1.5s ease-in-out infinite;
         }
         .ml-loading-text {
-          animation: ml-pulse 1.2s ease-in-out infinite;
+          animation: ml-fade-in 0.6s ease-out;
+        }
+        .ml-connector-line {
+          animation: ml-expand 1s ease-out forwards;
         }
       `}</style>
 
-      <div className="ml-loading-ring-outer">
+      {/* T-shaped connector at top */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        position: 'absolute',
+        top: '20vh',
+      }}>
+        <div className="ml-connector-line" style={{
+          height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.8) 50%, transparent)',
+          boxShadow: '0 0 10px rgba(255,255,255,0.3)',
+          width: 0,
+          maxWidth: '320px',
+        }} />
+        <div style={{
+          width: 1,
+          height: 48,
+          background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), transparent)',
+          boxShadow: '0 0 8px rgba(255,255,255,0.35)',
+        }} />
+      </div>
+
+      {/* Glowing spinner */}
+      <div style={{ position: 'relative' }}>
         <div className="ml-loading-ring" />
       </div>
 
-      <div className="ml-loading-text" style={{ textAlign: 'center' }}>
-        <p style={{ ...PF, color: '#fff', fontSize: '1.35rem', fontWeight: 600, margin: 0 }}>
-          Loading ML nodes
-          <span style={{ display: 'inline-block', width: '1.2em', textAlign: 'left' }}>...</span>
-        </p>
+      {/* Loading text */}
+      <div className="ml-loading-text" style={{ textAlign: 'center', maxWidth: '500px' }}>
+        <h2 style={{
+          ...PF,
+          color: '#fff',
+          fontSize: 'clamp(1.5rem, 3vw, 2rem)',
+          fontWeight: 500,
+          fontStyle: 'italic',
+          margin: 0,
+          marginBottom: 16,
+          letterSpacing: '0.01em',
+        }}>
+          Discovering Arbitrage
+        </h2>
         <p style={{
           ...PF,
-          color: 'rgba(255,255,255,0.55)',
-          fontSize: '0.9rem',
-          marginTop: 8,
-          fontWeight: 400,
+          color: 'rgba(255,255,255,0.6)',
+          fontSize: '0.95rem',
+          margin: 0,
+          fontWeight: 300,
+          lineHeight: 1.6,
         }}>
-          Fetching games & running model — this may take a minute
+          Analyzing 150+ games across basketball, hockey, baseball & football
         </p>
       </div>
 
+      {/* Blue gradient wave at bottom */}
       <div style={{
-        width: 200,
-        height: 4,
-        background: 'rgba(255,255,255,0.08)',
-        borderRadius: 2,
-        overflow: 'hidden',
-      }}>
-        <div style={{
-          height: '100%',
-          width: '40%',
-          background: 'linear-gradient(90deg, #6495ed, rgba(57,255,20,0.7))',
-          borderRadius: 2,
-          animation: 'ml-pulse 1.2s ease-in-out infinite',
-        }} />
-      </div>
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        height: '300px',
+        pointerEvents: 'none',
+        background: `
+          radial-gradient(ellipse 80% 50% at 20% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 50% 60%, rgba(37, 99, 235, 0.4) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 80% 50%, rgba(59, 130, 246, 0.3) 0%, transparent 50%),
+          linear-gradient(180deg, transparent 0%, rgba(29, 78, 216, 0.15) 50%, transparent 100%)
+        `,
+      }} />
     </div>
   );
 }

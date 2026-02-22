@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+<<<<<<< HEAD
+      "Bash(python -m pytest:*)",
+      "Bash(pip install:*)",
+      "Bash(=0.20.0)",
+      "Bash(curl:*)",
+      "Bash(python3:*)"
+=======
+      "Bash(find:*)"
+>>>>>>> ff022ad (changes)
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

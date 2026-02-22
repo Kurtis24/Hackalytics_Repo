@@ -42,7 +42,7 @@ def _get_client():
 
 
 _client = None
- main
+
 # ── Sample / fallback data ───────────────────────────────────────────
 
 SAMPLE_GAMES = [
@@ -250,8 +250,8 @@ def fetch_upcoming_games(category: Optional[str] = None, force_refresh: bool = F
             games_per_sport = target_games // 4  # Try to get 37-38 per sport
 
             # First pass: try to get games_per_sport from each sport
-            for category in ["basketball", "baseball", "hockey", "football"]:
-                available = games_by_category[category]
+            for sport_category in ["basketball", "baseball", "hockey", "football"]:
+                available = games_by_category[sport_category]
                 to_add = min(len(available), games_per_sport)
 
                 for game in available[:to_add]:
@@ -271,11 +271,11 @@ def fetch_upcoming_games(category: Optional[str] = None, force_refresh: bool = F
             remaining_needed = target_games - len(_cached_games)
             if remaining_needed > 0:
                 logger.info("Need %d more games to reach target - filling from available sports", remaining_needed)
-                for category in ["basketball", "hockey", "baseball", "football"]:
+                for sport_category in ["basketball", "hockey", "baseball", "football"]:
                     if remaining_needed <= 0:
                         break
 
-                    available = games_by_category[category]
+                    available = games_by_category[sport_category]
                     already_used = min(len(available), games_per_sport)
                     extra_available = available[already_used:]
 
@@ -301,15 +301,27 @@ def fetch_upcoming_games(category: Optional[str] = None, force_refresh: bool = F
                 cat = game.get("category", "unknown")
                 category_counts[cat] = category_counts.get(cat, 0) + 1
             logger.info("Games by sport: %s", category_counts)
+
+            # If no games were fetched, fall back to sample data
+            if len(_cached_games) == 0:
+                logger.warning("No games fetched from sports APIs - using sample data")
+                _cached_games = SAMPLE_GAMES
+                _cached_odds = SAMPLE_ODDS
         except Exception as e:
             logger.error("Failed to fetch from sports APIs (%s) — using sample data", e, exc_info=True)
             _cached_games = SAMPLE_GAMES
             _cached_odds = SAMPLE_ODDS
 
     # Filter by category if requested
-    games = _cached_games
+    games = _cached_games if _cached_games is not None else []
     if category:
         games = [g for g in games if g.get("category", "").lower() == category.lower()]
+
+    # Final fallback: if we somehow have no games, use sample data
+    if len(games) == 0 and category is None:
+        logger.warning("No games available - using sample data as final fallback")
+        return SAMPLE_GAMES
+
     return games
 
 

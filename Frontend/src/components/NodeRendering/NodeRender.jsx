@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { SceneManager } from './SceneManager.js';
 import { useData } from '../../context/DataContext.jsx';
 import { adaptNodesForScene, generateConnections } from '../../utils/dataAdapter.js';
@@ -9,6 +9,21 @@ export default function NodeRender({ onNodeSelect }) {
   const [error, setError] = useState(null);
   const [ready, setReady] = useState(false);
   const { getNodes, dataMode } = useData();
+
+  // Calculate node statistics
+  const nodeStats = useMemo(() => {
+    const nodes = getNodes();
+    const total = nodes.length;
+
+    // Group by sport/category
+    const byCategory = {};
+    nodes.forEach(node => {
+      const cat = node.category || node.sport || 'unknown';
+      byCategory[cat] = (byCategory[cat] || 0) + 1;
+    });
+
+    return { total, byCategory };
+  }, [getNodes]);
 
   // ── Search state ────────────────────────────────────────────────────────────
   const [searchText, setSearchText] = useState('');
@@ -135,42 +150,52 @@ export default function NodeRender({ onNodeSelect }) {
       setActivePreset(null);
       return;
     }
-    
+
     handleClear();
     setActivePreset(preset);
-    
+
     setTimeout(() => {
       const manager = managerRef.current;
       if (!manager) return;
-      
+
+      // Debug: log actual data ranges
+      if (manager.nodeRenderer.profit && manager.nodeRenderer.profit.length > 0) {
+        const profits = Array.from(manager.nodeRenderer.profit);
+        const risks = Array.from(manager.nodeRenderer.risk);
+        const confs = Array.from(manager.nodeRenderer.confidence);
+        console.log('[Filter Debug] Data ranges:', {
+          profit: { min: Math.min(...profits), max: Math.max(...profits), avg: profits.reduce((a,b)=>a+b,0)/profits.length },
+          risk: { min: Math.min(...risks), max: Math.max(...risks), avg: risks.reduce((a,b)=>a+b,0)/risks.length },
+          confidence: { min: Math.min(...confs), max: Math.max(...confs), avg: confs.reduce((a,b)=>a+b,0)/confs.length }
+        });
+      }
+
       const criteria = {};
       if (preset === 'high-risk') {
-        setMinProfit('5');
-        setMaxProfit('10');
-        setMinRisk('0.6');
-        setMinVolume('200000');
-        criteria.minProfit = 5;
-        criteria.maxProfit = 10;
-        criteria.minRisk = 0.6;
-        criteria.minVolume = 200000;
+        // High risk, high reward bets - adjusted for realistic data
+        setMinProfit('0.05');
+        setMinRisk('0.55');
+        criteria.minProfit = 0.05;  // Profit score * 10, so 0.005+ profit margin (0.5%)
+        criteria.minRisk = 0.55;     // Risk score > 55%
       } else if (preset === 'safe') {
-        setMinProfit('0.5');
-        setMaxRisk('0.35');
-        setMinConf('0.7');
-        setMinVolume('100000');
-        criteria.minProfit = 0.5;
-        criteria.maxRisk = 0.35;
-        criteria.minConf = 0.7;
-        criteria.minVolume = 100000;
+        // Low risk, reliable bets - adjusted for realistic data
+        setMinProfit('0.01');
+        setMaxRisk('0.40');
+        setMinConf('0.35');
+        criteria.minProfit = 0.01;   // Profit score * 10, so 0.001+ profit margin (0.1%)
+        criteria.maxRisk = 0.40;     // Risk score < 40%
+        criteria.minConf = 0.35;     // Confidence > 35%
       } else if (preset === 'live') {
         setLiveOnly(true);
-        setMinProfit('0.5');
+        setMinProfit('0.01');
         criteria.live = true;
-        criteria.minProfit = 0.5;
+        criteria.minProfit = 0.01;
       }
-      
+
+      console.log(`[Filter ${preset}] Applying criteria:`, criteria);
       const indices = manager.nodeRenderer.search(criteria);
-      const count = manager.applySearch(indices);
+      console.log(`[Filter ${preset}] Found ${indices.length} matches out of ${manager.nodeRenderer.nodeIds.length} nodes`);
+      const count = manager.applySearch(indices, true); // true = reframe camera
       setResultInfo({ count });
     }, 50);
   }, [handleClear, activePreset]);
@@ -519,42 +544,60 @@ export default function NodeRender({ onNodeSelect }) {
         <div style={{
           position: 'absolute', top: 60, left: 16,
           background: 'rgba(8,8,20,0.82)', border: '1px solid rgba(255,255,255,0.10)',
-          borderRadius: 8, padding: '10px 14px', ...PF, fontSize: 11,
-          color: '#ccc', lineHeight: 1.9, pointerEvents: 'none',
+          borderRadius: 8, padding: '14px 18px', ...PF, fontSize: 13,
+          color: '#ccc', lineHeight: 2, pointerEvents: 'none',
         }}>
-          <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Axes</div>
-          {[
-            { label: 'X  Confidence →', color: '#ffffff' },
-            { label: 'Y  Profit →',     color: '#ffffff' },
-            { label: 'Z  Risk →',       color: '#ffffff' },
-          ].map(({ label: l, color }) => (
-            <div key={l} style={{ color }}>{l}</div>
-          ))}
+          {/* Total Nodes Header */}
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ color: '#39ff14', fontSize: 22, fontWeight: 'bold' }}>
+                {nodeStats.total}
+              </span>
+              <span style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>Nodes</span>
+              <span style={{ color: '#888', fontSize: 12 }}>
+                {dataMode === 'live' ? 'LIVE' : 'MOCK'}
+              </span>
+            </div>
+          </div>
 
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 8, paddingTop: 8 }}>
-            <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4 }}>Color</div>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 10, paddingTop: 10 }}>
+            <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 6, fontSize: 14 }}>Axes</div>
             {[
-              { color: '#ff7043', label: 'Baseball' },
-              { color: '#42a5f5', label: 'Football' },
-              { color: '#ffca28', label: 'Basketball' },
-              { color: '#26c6da', label: 'Hockey' },
-            ].map(({ color, label: l }) => (
-              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+              { label: 'X  Confidence →', color: '#ffffff' },
+              { label: 'Y  Profit →',     color: '#ffffff' },
+              { label: 'Z  Risk →',       color: '#ffffff' },
+            ].map(({ label: l, color }) => (
+              <div key={l} style={{ color, fontSize: 13 }}>{l}</div>
+            ))}
+          </div>
+
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 10, paddingTop: 10 }}>
+            <div style={{ color: '#fff', fontWeight: 'bold', marginBottom: 6, fontSize: 14 }}>Color</div>
+            {[
+              { color: '#ff7043', label: 'Baseball', key: 'baseball' },
+              { color: '#42a5f5', label: 'Football', key: 'football' },
+              { color: '#ffca28', label: 'Basketball', key: 'basketball' },
+              { color: '#26c6da', label: 'Hockey', key: 'hockey' },
+            ].map(({ color, label: l, key }) => (
+              <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                 <span style={{
-                  display: 'inline-block', width: 10, height: 10,
+                  display: 'inline-block', width: 12, height: 12,
                   background: color, borderRadius: '50%', flexShrink: 0,
                 }} />
-                {l}
+                <span style={{ fontSize: 13 }}>{l}</span>
+                <span style={{ color: '#888', fontSize: 12, marginLeft: 'auto' }}>
+                  {nodeStats.byCategory[key] || 0}
+                </span>
               </div>
             ))}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
               <span style={{
-                display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-                border: '1.5px solid #ff0000', flexShrink: 0,
+                display: 'inline-block', width: 12, height: 12, borderRadius: '50%',
+                border: '2px solid #ff0000', flexShrink: 0,
               }} />
-              Live
+              <span style={{ fontSize: 13 }}>Live</span>
             </div>
-            <div style={{ color: '#888', fontSize: 10, marginTop: 4 }}>
+            <div style={{ color: '#888', fontSize: 11, marginTop: 6 }}>
               Size = volume · Hover to inspect · Click to focus
             </div>
           </div>

@@ -45,12 +45,12 @@ export class EdgeRenderer {
 
     const material = new LineMaterial({
       color:      0x3a3a4a,
-      linewidth:  0.8,
+      linewidth:  0.5,
       resolution: this._resolution,
       dashed:     true,
-      dashScale:  50,
-      dashSize:   3,
-      gapSize:    3,
+      dashScale:  30,
+      dashSize:   1.5,
+      gapSize:    6,
     });
 
     this._mesh = new LineSegments2(geometry, material);
@@ -81,12 +81,12 @@ export class EdgeRenderer {
 
     const material = new LineMaterial({
       color:      0x00e5ff,
-      linewidth:  3,
+      linewidth:  2,
       resolution: this._resolution,
       dashed:     true,
-      dashScale:  50,
-      dashSize:   3,
-      gapSize:    3,
+      dashScale:  30,
+      dashSize:   2,
+      gapSize:    4,
     });
 
     this._focusMesh = new LineSegments2(geometry, material);

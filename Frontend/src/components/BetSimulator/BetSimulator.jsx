@@ -10,23 +10,31 @@ import {
 const PF = { fontFamily: "'Playfair Display', Georgia, serif" };
 
 export default function BetSimulator({ selectedNode }) {
-  const [betAmount, setBetAmount] = useState(20);
+  const [betAmount, setBetAmount] = useState(100);
   const [expectedProfit, setExpectedProfit] = useState(0);
   const [slippageRisk, setSlippageRisk] = useState(0);
   const [edge, setEdge] = useState(0);
-  const [sliderMin, setSliderMin] = useState(0);
-  const [sliderMax, setSliderMax] = useState(5000);
+  const [sliderMin, setSliderMin] = useState(10);
+  const [sliderMax, setSliderMax] = useState(2000);
+  const [originalRisk, setOriginalRisk] = useState(0);
 
-  // Initialize bet amount to node's volume when node changes
+  // Initialize bet amount to the node's volume when node changes
   useEffect(() => {
     if (!selectedNode) return;
-    
-    const nodeVolume = selectedNode.volume || 20;
+
+    // Start at the node's volume to match what's shown in node details
+    const nodeVolume = selectedNode.volume || 100;
     setBetAmount(nodeVolume);
-    
-    // Set slider range: current volume +/- 5000
-    setSliderMin(Math.max(0, nodeVolume - 5000));
-    setSliderMax(nodeVolume + 5000);
+
+    // Set slider range: 50% below to 300% above the node's volume
+    setSliderMin(Math.max(10, Math.floor(nodeVolume * 0.5)));
+    setSliderMax(Math.ceil(nodeVolume * 3));
+
+    // Calculate and store the original risk for this node at its original volume
+    const lineMovement = calculateLineMovement(selectedNode.sportsbooks);
+    const marketCeiling = calculateMarketCeiling(lineMovement, selectedNode.marketType);
+    const originalSlippage = calculateSlippageRisk(nodeVolume, marketCeiling);
+    setOriginalRisk(originalSlippage);
   }, [selectedNode]);
 
   useEffect(() => {
@@ -118,7 +126,7 @@ export default function BetSimulator({ selectedNode }) {
             gap: '8px',
             marginTop: '16px',
           }}>
-            <span style={{ ...PF, color: '#666', fontSize: '12px' }}>${sliderMin.toLocaleString()}</span>
+            <span style={{ ...PF, color: '#666', fontSize: '12px' }}>${sliderMin}</span>
             <input
               type="range"
               min={sliderMin}
@@ -136,7 +144,7 @@ export default function BetSimulator({ selectedNode }) {
                 WebkitAppearance: 'none',
               }}
             />
-            <span style={{ ...PF, color: '#666', fontSize: '12px' }}>${sliderMax.toLocaleString()}</span>
+            <span style={{ ...PF, color: '#666', fontSize: '12px' }}>${sliderMax}</span>
           </div>
         </div>
 
@@ -193,6 +201,16 @@ export default function BetSimulator({ selectedNode }) {
             marginTop: '16px',
           }}>
             {riskLevel}
+            {originalRisk > 0 && (() => {
+              const riskChange = slippageRisk - originalRisk;
+              const changeColor = riskChange > 0 ? '#ff4444' : '#39ff14';
+              const changeSign = riskChange > 0 ? '+' : '';
+              return (
+                <span style={{ color: changeColor, fontSize: '14px', marginLeft: '8px' }}>
+                  ({changeSign}{riskChange.toFixed(1)}%)
+                </span>
+              );
+            })()}
           </div>
         </div>
 

@@ -100,46 +100,62 @@ export default function Execute({ onNav }) {
   return (
     <div style={{
       width: '100vw',
-      height: 'calc(100vh - 57px)',
-      background: 'linear-gradient(135deg, #0a0a14 0%, #1a1a2e 100%)',
+      minHeight: 'calc(100vh - 57px)',
+      background: '#000',
       display: 'flex',
+      flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
       position: 'relative',
+      padding: '80px 24px',
     }}>
       {/* Full-screen ML loading overlay when Execute Backend is running the pipeline */}
       {localLoading && loadingAction === 'execute' && <MLLoadingOverlay />}
 
+      {/* T-shaped connector at top */}
       <div style={{
-        maxWidth: '600px',
-        padding: '48px',
-        background: 'rgba(8,8,20,0.85)',
-        border: '1px solid rgba(255,255,255,0.10)',
-        borderRadius: '16px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        marginBottom: 40,
+        position: 'relative',
+        zIndex: 2,
+      }}>
+        <div style={{
+          width: 320,
+          height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.8) 50%, transparent)',
+          boxShadow: '0 0 10px rgba(255,255,255,0.3)',
+        }} />
+        <div style={{
+          width: 1,
+          height: 48,
+          background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), transparent)',
+          boxShadow: '0 0 8px rgba(255,255,255,0.35)',
+        }} />
+      </div>
+
+      {/* Main content */}
+      <div style={{
+        maxWidth: '680px',
         textAlign: 'center',
+        position: 'relative',
+        zIndex: 2,
       }}>
         <h1 style={{
           ...PF,
-          fontSize: '3rem',
-          fontWeight: 400,
+          fontSize: 'clamp(2.5rem, 5.5vw, 3.8rem)',
+          fontWeight: 500,
+          fontStyle: 'italic',
+          textAlign: 'center',
+          lineHeight: 1.15,
+          letterSpacing: '0.01em',
           color: '#fff',
-          marginBottom: '16px',
-          letterSpacing: '0.02em',
+          marginBottom: '48px',
         }}>
           Arbitrage Discovery
         </h1>
-        
-        <p style={{
-          ...PF,
-          fontSize: '1.1rem',
-          color: 'rgba(255,255,255,0.7)',
-          lineHeight: 1.6,
-          marginBottom: '40px',
-          fontWeight: 300,
-        }}>
-          Execute the ML model to discover real-time arbitrage opportunities across sports betting markets, or explore with mock data.
-        </p>
 
         {localError && (
           <div style={{
@@ -147,7 +163,7 @@ export default function Execute({ onNav }) {
             border: '1px solid rgba(255,107,107,0.40)',
             borderRadius: '8px',
             padding: '12px 16px',
-            marginBottom: '24px',
+            marginBottom: '32px',
             color: '#ff6b6b',
             fontSize: '0.9rem',
             fontFamily: 'monospace',
@@ -156,116 +172,61 @@ export default function Execute({ onNav }) {
           </div>
         )}
 
-        <div style={{
-          display: 'flex',
-          gap: '16px',
-          justifyContent: 'center',
-          flexWrap: 'wrap',
-        }}>
-          <button
-            onClick={handleExecute}
-            disabled={localLoading}
-            style={{
-              ...PF,
-              background: localLoading ? 'rgba(57,255,20,0.10)' : 'rgba(57,255,20,0.20)',
-              border: '2px solid rgba(57,255,20,0.50)',
-              borderRadius: '12px',
-              color: '#39ff14',
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              padding: '16px 40px',
-              cursor: localLoading ? 'not-allowed' : 'pointer',
-              opacity: localLoading ? 0.6 : 1,
-              transition: 'all 0.3s',
-              letterSpacing: '0.02em',
-            }}
-            onMouseEnter={(e) => {
-              if (!localLoading) {
-                e.target.style.background = 'rgba(57,255,20,0.30)';
-                e.target.style.transform = 'translateY(-2px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = 'rgba(57,255,20,0.20)';
-              e.target.style.transform = 'translateY(0)';
-            }}
-          >
-            {localLoading && loadingAction === 'execute' ? 'Running...' : 'Execute Backend'}
-          </button>
-          <button
-            onClick={handleLoadFromMl}
-            disabled={localLoading}
-            style={{
-              ...PF,
-              background: localLoading ? 'rgba(100,149,237,0.10)' : 'rgba(100,149,237,0.20)',
-              border: '2px solid rgba(100,149,237,0.50)',
-              borderRadius: '12px',
-              color: '#6495ed',
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              padding: '16px 40px',
-              cursor: localLoading ? 'not-allowed' : 'pointer',
-              opacity: localLoading ? 0.6 : 1,
-              transition: 'all 0.3s',
-              letterSpacing: '0.02em',
-            }}
-            onMouseEnter={(e) => {
-              if (!localLoading) {
-                e.target.style.background = 'rgba(100,149,237,0.30)';
-                e.target.style.transform = 'translateY(-2px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = 'rgba(100,149,237,0.20)';
-              e.target.style.transform = 'translateY(0)';
-            }}
-          >
-            {localLoading && loadingAction === 'ml' ? 'Loading...' : 'Load from ML'}
-          </button>
-
-          <button
-            onClick={handleUseMock}
-            disabled={localLoading}
-            style={{
-              ...PF,
-              background: 'rgba(255,255,255,0.05)',
-              border: '2px solid rgba(255,255,255,0.20)',
-              borderRadius: '12px',
-              color: 'rgba(255,255,255,0.8)',
-              fontSize: '1.1rem',
-              fontWeight: 600,
-              padding: '16px 40px',
-              cursor: localLoading ? 'not-allowed' : 'pointer',
-              opacity: localLoading ? 0.4 : 1,
-              transition: 'all 0.3s',
-              letterSpacing: '0.02em',
-            }}
-            onMouseEnter={(e) => {
-              if (!localLoading) {
-                e.target.style.background = 'rgba(255,255,255,0.10)';
-                e.target.style.transform = 'translateY(-2px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.target.style.background = 'rgba(255,255,255,0.05)';
-              e.target.style.transform = 'translateY(0)';
-            }}
-          >
-            Use Mock Data
-          </button>
-        </div>
-
-        <p style={{
-          ...PF,
-          fontSize: '0.85rem',
-          color: 'rgba(255,255,255,0.4)',
-          marginTop: '32px',
-          fontStyle: 'italic',
-          fontWeight: 300,
-        }}>
-          Backend integration ready · Mock data available for testing
-        </p>
+        <button
+          onClick={handleExecute}
+          disabled={localLoading}
+          className="btn-outline"
+          style={{
+            ...PF,
+            fontSize: '1.1rem',
+            padding: '16px 48px',
+            cursor: localLoading ? 'not-allowed' : 'pointer',
+            opacity: localLoading ? 0.6 : 1,
+          }}
+        >
+          {localLoading && loadingAction === 'execute' ? 'Running...' : 'Start Now'}
+        </button>
       </div>
+
+      {/* T-shaped connector at bottom */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        marginTop: 40,
+        position: 'relative',
+        zIndex: 2,
+      }}>
+        <div style={{
+          width: 1,
+          height: 48,
+          background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.9))',
+          boxShadow: '0 0 8px rgba(255,255,255,0.35)',
+        }} />
+        <div style={{
+          width: 320,
+          height: 1,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.8) 50%, transparent)',
+          boxShadow: '0 0 10px rgba(255,255,255,0.3)',
+        }} />
+      </div>
+
+      {/* Blue gradient wave at bottom */}
+      <div style={{
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        width: '100%',
+        height: '300px',
+        pointerEvents: 'none',
+        zIndex: 1,
+        background: `
+          radial-gradient(ellipse 80% 50% at 20% 50%, rgba(59, 130, 246, 0.4) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 50% 60%, rgba(37, 99, 235, 0.5) 0%, transparent 50%),
+          radial-gradient(ellipse 80% 50% at 80% 50%, rgba(59, 130, 246, 0.4) 0%, transparent 50%),
+          linear-gradient(180deg, transparent 0%, rgba(29, 78, 216, 0.2) 50%, transparent 100%)
+        `,
+      }} />
     </div>
   );
 }

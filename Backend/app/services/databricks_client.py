@@ -31,6 +31,7 @@ class DatabricksServingClient:
                 host=host,
                 client_id=client_id,
                 client_secret=client_secret,
+                http_timeout_seconds=10,
             )
         )
 
@@ -49,6 +50,32 @@ class DatabricksServingClient:
             dataframe_records=dataframe_records,
         )
         return response.as_dict()
+
+    def execute_sql(self, sql: str, warehouse_id: str) -> list[dict]:
+        """Execute a SQL statement against a Databricks SQL warehouse.
+
+        Args:
+            sql: The SQL query to execute.
+            warehouse_id: The SQL warehouse ID to run against.
+
+        Returns:
+            A list of row dicts from the result set.
+        """
+        response = self._ws.statement_execution.execute_statement(
+            statement=sql,
+            warehouse_id=warehouse_id,
+        )
+        manifest = response.manifest
+        data = response.result
+
+        if not manifest or not data or not data.data_array:
+            return []
+
+        columns = [col.name for col in manifest.schema.columns]
+        return [
+            dict(zip(columns, row))
+            for row in data.data_array
+        ]
 
     def query_split(
         self,

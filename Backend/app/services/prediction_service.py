@@ -20,7 +20,6 @@ import torch
 from app.config import settings
 from app.models.prediction import PredictionRequest
 from app.models.market_prediction import MarketPrediction
-from app.services.delta_lake_service import fetch_odds_for_games, fetch_upcoming_games
 from app.services.databricks_client import DatabricksServingClient
 from app.services.local_model_service import LocalModelService, MARKET_TYPE_MAP
 
@@ -35,10 +34,13 @@ class DatabricksModelService:
 
     def __init__(self, client: DatabricksServingClient) -> None:
         self._client = client
-        # Verify connectivity with a lightweight probe
+        # Verify connectivity with a lightweight probe (timeout after 10s)
         logger.info("DatabricksModelService: verifying endpoint connectivity")
-        self._client.query([{"probe": True}])
-        logger.info("DatabricksModelService: endpoint reachable")
+        try:
+            self._client.query([{"probe": True}])
+            logger.info("DatabricksModelService: endpoint reachable")
+        except Exception as exc:
+            logger.warning("DatabricksModelService: probe failed (%s), continuing anyway", exc)
 
     def predict(
         self,

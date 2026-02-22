@@ -98,17 +98,42 @@ export class SceneManager {
     this.nodeRenderer._onFocusCallback = (nodeId) => {
       this.edgeRenderer.setFocusEdges(nodeId, this.nodeRenderer);
     };
+
+    // Frame all nodes on initial load
+    if (nodes.length > 0) {
+      const positions = [];
+      for (let i = 0; i < nodes.length; i++) {
+        const x = this.nodeRenderer.positions[i * 3];
+        const y = this.nodeRenderer.positions[i * 3 + 1];
+        const z = this.nodeRenderer.positions[i * 3 + 2];
+        positions.push(new THREE.Vector3(x, y, z));
+      }
+      this.cameraController.framePositions(positions);
+    }
   }
 
   /**
    * Apply search: hide non-matching nodes and rebuild edges for visible nodes only.
    * @param {number[]} indices — nodeIndex[] from NodeRenderer.search()
+   * @param {boolean} reframeCamera — whether to reposition camera to frame the results
    * @returns {number} match count
    */
-  applySearch(indices) {
+  applySearch(indices, reframeCamera = false) {
     const count = this.nodeRenderer.applySearchResults(indices);
     const visibleConns = this.nodeRenderer.filterConnectionsByVisibility(this._allConnections);
     this.edgeRenderer.initialize(visibleConns, this.nodeRenderer);
+
+    // Reframe camera to show filtered results
+    if (reframeCamera && indices.length > 1) {
+      const positions = indices.map(i => {
+        const x = this.nodeRenderer.positions[i * 3];
+        const y = this.nodeRenderer.positions[i * 3 + 1];
+        const z = this.nodeRenderer.positions[i * 3 + 2];
+        return new THREE.Vector3(x, y, z);
+      });
+      this.cameraController.framePositions(positions);
+    }
+
     return count;
   }
 

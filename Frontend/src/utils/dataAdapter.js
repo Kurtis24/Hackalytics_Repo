@@ -107,36 +107,56 @@ export function adaptNodesForScene(apiNodes) {
 /**
  * Generate connections between nodes that share team names
  * Connects nodes if they share either home_team or away_team
+ * Limited to reduce visual clutter
  */
 export function generateConnections(nodes) {
   const connections = [];
   const n = nodes.length;
-  
+  const maxConnectionsPerNode = 3; // Limit connections per node
+  const connectionCounts = new Map(); // Track connections per node
+
   for (let i = 0; i < n; i++) {
     const nodeA = nodes[i];
     const homeA = nodeA.rawData?.home_team;
     const awayA = nodeA.rawData?.away_team;
-    
+    const categoryA = nodeA.sport;
+
     if (!homeA || !awayA) continue;
-    
+
+    // Skip if this node already has max connections
+    if (connectionCounts.get(nodeA.node_id) >= maxConnectionsPerNode) continue;
+
     for (let j = i + 1; j < n; j++) {
       const nodeB = nodes[j];
       const homeB = nodeB.rawData?.home_team;
       const awayB = nodeB.rawData?.away_team;
-      
+      const categoryB = nodeB.sport;
+
       if (!homeB || !awayB) continue;
-      
-      const sharesTeam = homeA === homeB || homeA === awayB || 
-                         awayA === homeB || awayA === awayB;
-      
-      if (sharesTeam) {
+
+      // Skip if either node has max connections
+      if (connectionCounts.get(nodeA.node_id) >= maxConnectionsPerNode ||
+          connectionCounts.get(nodeB.node_id) >= maxConnectionsPerNode) continue;
+
+      // Only connect nodes in the same sport category
+      if (categoryA !== categoryB) continue;
+
+      // Only connect if they share BOTH teams (exact same matchup)
+      const sameMatchup = (homeA === homeB && awayA === awayB) ||
+                          (homeA === awayB && awayA === homeB);
+
+      if (sameMatchup) {
         connections.push({
           source: nodeA.node_id,
           target: nodeB.node_id,
         });
+
+        // Update connection counts
+        connectionCounts.set(nodeA.node_id, (connectionCounts.get(nodeA.node_id) || 0) + 1);
+        connectionCounts.set(nodeB.node_id, (connectionCounts.get(nodeB.node_id) || 0) + 1);
       }
     }
   }
-  
+
   return connections;
 }

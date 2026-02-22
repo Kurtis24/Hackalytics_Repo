@@ -64,10 +64,10 @@ def _market_to_node(market: dict, game: dict) -> dict:
 
     # Calculate reasonable volume based on confidence and profit potential
     # Higher confidence and profit = larger volume
-    # Range: 50,000 to 500,000 (typical sports betting volumes)
-    base_volume = 50000
+    # Range: 100 to 1,100 (reasonable for individual bets)
+    base_volume = 100
     volume_multiplier = (confidence * 2) + (profit_score * 8)  # 0-10 range
-    volume = int(base_volume + (volume_multiplier * 50000))
+    volume = int(base_volume + (volume_multiplier * 100))
 
     return {
         "category": game.get("category", ""),

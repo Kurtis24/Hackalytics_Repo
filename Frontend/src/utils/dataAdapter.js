@@ -55,11 +55,27 @@ export function adaptMlNodes(nodes) {
  */
 export function adaptNodeForScene(apiNode, index = 0) {
   const nodeId = `${apiNode.category.toUpperCase()}_${apiNode.home_team}_${apiNode.away_team}_${apiNode.market_type}_${index}`.replace(/\s/g, '_');
-  
+
   const now = new Date();
   const nodeDate = new Date(apiNode.Date || apiNode.date);
   const isToday = nodeDate.toDateString() === now.toDateString();
-  
+
+  // Add logging for first few nodes to debug positioning
+  if (index < 5) {
+    console.log(`[dataAdapter] Node ${index} raw metrics:`, {
+      profit_score: apiNode.profit_score,
+      risk_score: apiNode.risk_score,
+      confidence: apiNode.confidence,
+      volume: apiNode.volume,
+    });
+    console.log(`[dataAdapter] Node ${index} scene metrics:`, {
+      confidence: apiNode.confidence,
+      profit: apiNode.profit_score * 10,
+      risk: apiNode.risk_score,
+      volume: apiNode.volume,
+    });
+  }
+
   return {
     node_id: nodeId,
     sport: apiNode.category,

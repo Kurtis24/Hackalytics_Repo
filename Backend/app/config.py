@@ -14,13 +14,17 @@ class Settings(BaseSettings):
     # URL of the ML model endpoint that returns prediction payloads.
     ml_model_url: str = ""
 
+    # ML Pipeline settings
+    ml_target_nodes: int = 150  # Target number of games to fetch for ML
+    ml_request_delay_seconds: float = 0.0  # Delay between ML requests (for rate limiting)
+
     # ------------------------------------------------------------------
     # Arbitrage Middleware — PRD v3 Volume Optimization (§5)
     # ------------------------------------------------------------------
     # Confidence filter — markets below this are dropped
     min_confidence: float = 0.60
 
-    bankroll: int = 100_000             # Total capital pool (USD)
+    bankroll: int = 100000             # Total capital pool (USD)
     kelly_fraction: float = 0.25        # Quarter Kelly for stealth + resilience
     bankroll_cap_pct: float = 0.10      # Max fraction of bankroll on any single market
 
@@ -76,7 +80,8 @@ class Settings(BaseSettings):
     #   local  — local checkpoint inference only
     #   remote — Databricks serving endpoint only (fails if unreachable)
     #   auto   — try remote, fall back to local on error
-    model_execution_mode: str = "auto"
+    model_execution_mode: str = "local"
+
 
     # Data output
     data_output_dir: str = "data/raw"

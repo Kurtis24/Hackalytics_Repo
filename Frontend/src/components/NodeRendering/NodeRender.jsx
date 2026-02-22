@@ -60,9 +60,18 @@ export default function NodeRender({ onNodeSelect }) {
     if (!ready || !managerRef.current) return;
     try {
       const sourceData  = getNodes();
+      console.log('[NodeRender] Reloading scene with source data:', sourceData);
+      console.log('[NodeRender] Data mode:', dataMode);
+
       const nodes       = adaptNodesForScene(sourceData);
+      console.log('[NodeRender] Adapted nodes for scene:', nodes);
+      console.log('[NodeRender] Total nodes for scene:', nodes.length);
+
       const connections = generateConnections(nodes);
+      console.log('[NodeRender] Generated connections:', connections.length);
+
       managerRef.current.loadNodes(nodes, connections);
+      console.log('[NodeRender] Nodes loaded into 3D scene');
     } catch (err) {
       console.error('[NodeRender] reload error:', err);
       setError(err.message ?? String(err));

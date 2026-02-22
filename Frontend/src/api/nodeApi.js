@@ -6,7 +6,7 @@
 //   • Nodes: fetchNodes(), addNode(), addBulkNodes(nodes) — GET /nodes, POST /nodes, POST /nodes/bulk
 //   • Run ML and show in app: runMlPipeline(true) then adaptMlNodes(nodes) then updateArbitrageData(nodes) — see ExecuteButton / Execute page
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:9000/api/v1';
 
 // ---------------------------------------------------------------------------
 // Games (live + not live)
@@ -32,19 +32,20 @@ export async function fetchLiveGames() {
 }
 
 // ---------------------------------------------------------------------------
-// ML pipeline (games → Databricks → nodes)
+// Execute pipeline (games → local ML model → arbitrage scoring → nodes)
 // ---------------------------------------------------------------------------
 
 /**
- * Run the ML pipeline: backend fetches games (live + not live), sends them
- * to the Databricks client, returns node-shaped results.
- * @param {boolean} [store=true] - If true, backend also appends nodes to the nodes store (GET /nodes).
- * @returns {Promise<Array>} List of nodes (same shape as Node model).
+ * Run the full Execute Backend pipeline:
+ *   1. Backend fetches games + odds
+ *   2. Runs the local ML model on each game × market type
+ *   3. Processes through the arbitrage scoring pipeline
+ *   4. Returns node-shaped results ready for graphing
+ * @returns {Promise<Array>} List of node dicts.
  */
-export async function runMlPipeline(store = true) {
-  const url = `${API_BASE_URL}/ml/run${store ? '?store=true' : '?store=false'}`;
-  const response = await fetch(url, { method: 'POST' });
-  if (!response.ok) throw new Error(`ML pipeline failed: ${response.statusText}`);
+export async function runMlPipeline() {
+  const response = await fetch(`${API_BASE_URL}/arbitrage/execute`, { method: 'POST' });
+  if (!response.ok) throw new Error(`Execute pipeline failed: ${response.statusText}`);
   return response.json();
 }
 

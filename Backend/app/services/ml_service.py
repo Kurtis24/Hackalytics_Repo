@@ -1,25 +1,18 @@
 """
-ML Model Service
+ML Model Service — local inference via the trained checkpoint.
 
-- POSTs to the configured ML_MODEL_URL to fetch a prediction payload (existing).
-- Uses the existing Databricks client to send games (live + not live) to the
-  discover_arbitrage serving endpoint and return node-shaped outputs. No ML
-  logic here — all model logic lives in Databricks.
+Pipeline:
+  1. Fetch games from sports APIs (get_games_for_ml)
+  2. For each game, fetch odds from Delta Lake / sample fallback
+  3. Run the local TemporalArbitrageScorer model on each game × market pair
+  4. Return PredictionInput-shaped dicts ready for the arbitrage pipeline
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import time
 from typing import Any
-
-import httpx
-
-from app.config import settings
-from app.models.game import Game
-from app.services.games_service import get_games_for_ml
-from app.services.databricks_client import DatabricksServingClient
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +23,6 @@ SAMPLE_PAYLOAD = {
     "away_team": "New York Knicks",
     "markets": [
         {
-            # True arb: +140 / +135 — line barely moved from open (+138 / +133)
-            # arb_margin ≈ 15.7% (exceptional odds; real markets typically 0.5-3%)
             "market_type": "spread",
             "confidence": 0.65,
             "bookmaker_1": "DraftKings",
@@ -43,7 +34,6 @@ SAMPLE_PAYLOAD = {
             "prediction": "home_team wins by 6",
         },
         {
-            # No arb: both sides -110 / -105 — vig still present
             "market_type": "points_total",
             "confidence": 0.61,
             "bookmaker_1": "DraftKings",
@@ -55,7 +45,6 @@ SAMPLE_PAYLOAD = {
             "prediction": "home_team scores over 110",
         },
         {
-            # No arb: -120 / +115 — implied sum > 1.0
             "market_type": "moneyline",
             "confidence": 0.72,
             "bookmaker_1": "DraftKings",
@@ -70,159 +59,82 @@ SAMPLE_PAYLOAD = {
 }
 
 
-async def fetch_prediction() -> dict:
-    """
-    POST to ML_MODEL_URL and return the prediction payload dict.
-    Falls back to SAMPLE_PAYLOAD if ML_MODEL_URL is not configured or unreachable.
-    """
-    url = settings.ml_model_url.strip()
-
-    if not url:
-        logger.info("ML_MODEL_URL not set — returning sample payload.")
-        return SAMPLE_PAYLOAD
-
-    logger.info("Fetching prediction from ML model: %s", url)
-    try:
-        async with httpx.AsyncClient(timeout=None) as client:
-            resp = await client.post(url, json={})
-            resp.raise_for_status()
-            data = resp.json()
-            logger.info("Received payload (%d markets).", len(data.get("markets", [])))
-            return data
-    except httpx.HTTPStatusError as e:
-        logger.error("HTTP %s from ML model — falling back to sample.", e.response.status_code)
-        return SAMPLE_PAYLOAD
-    except Exception as e:
-        logger.error("Could not reach ML model (%s) — falling back to sample.", e)
-        return SAMPLE_PAYLOAD
-
-
 # ---------------------------------------------------------------------------
-# Databricks path: games -> existing Databricks client -> nodes (response parsing only)
+# Convert game_prediction_service output → PredictionInput dicts
 # ---------------------------------------------------------------------------
 
-def _games_to_records(games: list[Game]) -> list[dict[str, Any]]:
-    """Convert games to dataframe_records for the existing Databricks client."""
-    return [
-        {
-            "category": g.category,
-            "home_team": g.home_team,
-            "away_team": g.away_team,
-            "start_time": g.start_time,
-            "live": g.live,
-        }
-        for g in games
-    ]
+def _game_prediction_to_payload(game_resp) -> dict[str, Any]:
+    """Convert a GamePredictionResponse into a PredictionInput-compatible dict."""
+    markets = []
+    for m in game_resp.markets:
+        markets.append({
+            "market_type": m.market_type,
+            "confidence": m.confidence,
+            "bookmaker_1": m.bookmaker_1,
+            "bookmaker_2": m.bookmaker_2,
+            "price_1": m.price_1,
+            "price_2": m.price_2,
+            "prediction": m.prediction,
+        })
 
-
-def _parse_databricks_response(response: dict[str, Any]) -> list[dict[str, Any]]:
-    """Parse the raw Databricks serving response into node-shaped dicts (no ML logic)."""
-    predictions = response.get("predictions") or response.get("predictions_array") or response.get("result")
-    if predictions is None:
-        if "columns" in response and "data" in response:
-            cols = response["columns"]
-            rows = response.get("data", [])
-            return [_row_to_node(dict(zip(cols, row))) for row in rows]
-        return []
-    if not isinstance(predictions, list):
-        return []
-    return [_row_to_node(p if isinstance(p, dict) else {}) for p in predictions]
-
-
-def _first_node_from_response(response: dict[str, Any]) -> dict[str, Any] | None:
-    """Extract a single node from a one-game ML response (for one-at-a-time calls)."""
-    nodes = _parse_databricks_response(response)
-    return nodes[0] if nodes else None
-
-
-def _row_to_node(row: dict[str, Any]) -> dict[str, Any]:
-    """Map one Databricks output row to frontend Node shape (field mapping only)."""
-    date_val = row.get("date") or row.get("Date") or row.get("start_time") or ""
-    if hasattr(date_val, "isoformat"):
-        date_val = date_val.isoformat()
     return {
-        "category": row.get("category", ""),
-        "home_team": row.get("home_team", ""),
-        "away_team": row.get("away_team", ""),
-        "profit_score": float(row.get("profit_score", 0) or 0),
-        "risk_score": float(row.get("risk_score", 0) or 0),
-        "confidence": float(row.get("confidence", 0) or 0),
-        "volume": int(row.get("volume", row.get("optimal_volume", 0)) or 0),
-        "date": date_val,
-        "market_type": row.get("market_type", ""),
-        "sportsbooks": row.get("sportsbooks", []),
+        "category": game_resp.category,  # Use actual category from game response
+        "date": game_resp.start_time,
+        "home_team": game_resp.home_team,
+        "away_team": game_resp.away_team,
+        "markets": markets,
     }
 
 
-_ENDPOINT_STOPPED_PHRASES = (
-    "endpoint is stopped",
-    "endpoint is not ready",
-    "please retry after starting",
-)
+def _fetch_all_predictions_sync() -> list[dict[str, Any]]:
+    """Synchronous: run local model on all games from all sports, return PredictionInput dicts."""
+    from app.services.game_prediction_service import get_all_game_predictions
+
+    # Fetch all games (no category filter = all sports)
+    response = get_all_game_predictions()
+
+    payloads: list[dict[str, Any]] = []
+    for game_resp in response.games:
+        if game_resp.markets:
+            payloads.append(_game_prediction_to_payload(game_resp))
+
+    logger.info("Fetched predictions across all sports: %d total games", len(payloads))
+
+    # Log category breakdown
+    categories = {}
+    for payload in payloads:
+        cat = payload.get("category", "unknown")
+        categories[cat] = categories.get(cat, 0) + 1
+    logger.info("Category breakdown: %s", categories)
+
+    return payloads
 
 
-def _run_ml_queries_sync(
-    client: DatabricksServingClient,
-    records: list[dict[str, Any]],
-    delay_seconds: float,
-) -> list[dict[str, Any]]:
+async def fetch_all_predictions() -> list[dict[str, Any]]:
     """
-    Synchronous loop: one Databricks query per record, strictly sequential.
-    Used inside a thread so the async pipeline can explicitly await completion.
+    Full ML pipeline:
+      1. Fetch upcoming games + odds (Delta Lake / sample fallback)
+      2. Run local model inference for each game × market type
+      3. Return list of PredictionInput-compatible dicts
+
+    Falls back to [SAMPLE_PAYLOAD] on error.
     """
-    nodes: list[dict[str, Any]] = []
-    for i, record in enumerate(records):
-        if delay_seconds and i > 0:
-            time.sleep(delay_seconds)
-        try:
-            response = client.query([record])
-            node = _first_node_from_response(response)
-            if node:
-                nodes.append(node)
-        except Exception as e:
-            err_str = str(e).lower()
-            if any(phrase in err_str for phrase in _ENDPOINT_STOPPED_PHRASES):
-                msg = (
-                    "Databricks model serving endpoint is stopped. "
-                    "Start the endpoint in the Databricks workspace (Serving → your endpoint → Start), then retry."
-                )
-                logger.error("%s (failed on request %d/%d)", msg, i + 1, len(records))
-                raise RuntimeError(msg) from e
-            logger.warning("ML request %d/%d failed (%s), skipping game.", i + 1, len(records), e)
-    return nodes
+    try:
+        payloads = await asyncio.to_thread(_fetch_all_predictions_sync)
+        if not payloads:
+            logger.info("No game predictions produced — returning sample payload.")
+            return [SAMPLE_PAYLOAD]
+        logger.info("Local model produced predictions for %d games.", len(payloads))
+        return payloads
+    except Exception as e:
+        logger.error("Local model pipeline failed (%s) — falling back to sample.", e)
+        return [SAMPLE_PAYLOAD]
 
 
-async def fetch_nodes_via_databricks() -> list[dict[str, Any]]:
+async def fetch_prediction() -> dict:
     """
-    1) Request up to ml_target_nodes (default 150) games from sports, evenly distributed.
-    2) Run ML queries strictly sequentially in a thread and wait for completion.
-    3) Return all nodes. Pipeline is dependent: we do not return until the ML phase is done.
+    Backward-compatible: return a single prediction payload dict.
+    Used by GET /arbitrage/opportunities and GET /arbitrage/analysis.
     """
-    if not settings.databricks_client_id or not settings.databricks_client_secret:
-        logger.warning("Databricks credentials not set — returning no nodes.")
-        return []
-
-    games = await get_games_for_ml(target=settings.ml_target_nodes)
-    if not games:
-        logger.info("No games to send to Databricks — returning empty list.")
-        return []
-
-    client = DatabricksServingClient(
-        host=settings.databricks_host,
-        client_id=settings.databricks_client_id,
-        client_secret=settings.databricks_client_secret,
-        endpoint_name=settings.databricks_serving_endpoint,
-    )
-    records = _games_to_records(games)
-    delay = max(0.0, settings.ml_request_delay_seconds)
-
-    # Force wait: run blocking ML loop in a thread and await it so the pipeline is dependent
-    nodes = await asyncio.to_thread(
-        _run_ml_queries_sync,
-        client,
-        records,
-        delay,
-    )
-
-    logger.info("Databricks returned %d nodes from %d games (one ML call per game).", len(nodes), len(games))
-    return nodes
+    payloads = await fetch_all_predictions()
+    return payloads[0] if payloads else SAMPLE_PAYLOAD

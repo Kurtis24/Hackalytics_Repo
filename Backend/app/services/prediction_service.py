@@ -9,6 +9,9 @@ Exposes:
 """
 
 from __future__ import annotations
+from app.services.local_model_service import LocalModelService, MARKET_TYPE_MAP
+from app.services.databricks_client import DatabricksServingClient
+from app.services.delta_lake_service import fetch_odds_for_games, fetch_upcoming_games
 
 import logging
 from pathlib import Path
@@ -20,8 +23,6 @@ import torch
 from app.config import settings
 from app.models.prediction import PredictionRequest
 from app.models.market_prediction import MarketPrediction
-from app.services.databricks_client import DatabricksServingClient
-from app.services.local_model_service import LocalModelService, MARKET_TYPE_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,8 @@ class DatabricksModelService:
             self._client.query([{"probe": True}])
             logger.info("DatabricksModelService: endpoint reachable")
         except Exception as exc:
-            logger.warning("DatabricksModelService: probe failed (%s), continuing anyway", exc)
+            logger.warning(
+                "DatabricksModelService: probe failed (%s), continuing anyway", exc)
 
     def predict(
         self,

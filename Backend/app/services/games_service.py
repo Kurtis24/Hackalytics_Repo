@@ -123,17 +123,21 @@ def _evenly_distribute(games: list[Game], target: int) -> list[Game]:
     categories = ["basketball", "baseball", "american_football", "hockey"]
     result: list[Game] = []
     indices = {c: 0 for c in categories}
-    for _ in range(target):
-        added = False
+
+    # Round-robin: cycle through categories, adding one game from each per round
+    while len(result) < target:
+        added_this_round = False
         for cat in categories:
+            if len(result) >= target:
+                break
             pool = by_category.get(cat, [])
             i = indices[cat]
             if i < len(pool):
                 result.append(pool[i])
                 indices[cat] = i + 1
-                added = True
-                break
-        if not added:
+                added_this_round = True
+        # Stop if we didn't add any games this round (all categories exhausted)
+        if not added_this_round:
             break
     return result
 

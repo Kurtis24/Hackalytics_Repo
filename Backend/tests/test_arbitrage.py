@@ -289,6 +289,149 @@ class TestAnalysisEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# POST /api/v1/arbitrage/execute
+# ---------------------------------------------------------------------------
+
+EXECUTE_MOCK_PATH = "app.routers.arbitrage.fetch_all_predictions"
+
+
+def mock_fetch_all(payloads=None):
+    return patch(
+        EXECUTE_MOCK_PATH,
+        new_callable=AsyncMock,
+        return_value=payloads if payloads is not None else [SAMPLE_PAYLOAD],
+    )
+
+
+class TestExecutePipeline:
+    """End-to-end tests for the Execute Backend pipeline (POST /arbitrage/execute)."""
+
+    def test_returns_200(self):
+        with mock_fetch_all():
+            r = client.post("/api/v1/arbitrage/execute")
+        assert r.status_code == 200
+
+    def test_returns_a_list(self):
+        with mock_fetch_all():
+            r = client.post("/api/v1/arbitrage/execute")
+        assert isinstance(r.json(), list)
+
+    def test_sample_produces_three_nodes(self):
+        """Sample payload has 3 markets → 3 nodes (one per market)."""
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        assert len(nodes) == 3
+
+    def test_each_node_has_required_fields(self):
+        required = {
+            "category", "home_team", "away_team",
+            "profit_score", "risk_score", "confidence",
+            "volume", "date", "market_type", "sportsbooks",
+        }
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for node in nodes:
+            assert required <= set(node.keys()), f"Missing: {required - set(node.keys())}"
+
+    def test_profit_score_between_0_and_1(self):
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for n in nodes:
+            assert 0.0 <= n["profit_score"] <= 1.0
+
+    def test_risk_score_between_0_and_1(self):
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for n in nodes:
+            assert 0.0 <= n["risk_score"] <= 1.0
+
+    def test_confidence_between_0_and_1(self):
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for n in nodes:
+            assert 0.0 <= n["confidence"] <= 1.0
+
+    def test_sportsbooks_has_two_entries(self):
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for n in nodes:
+            assert len(n["sportsbooks"]) == 2
+
+    def test_sportsbook_entries_have_name_and_odds(self):
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for n in nodes:
+            for sb in n["sportsbooks"]:
+                assert "name" in sb
+                assert "odds" in sb
+
+    def test_market_types_from_sample(self):
+        """Sample payload has spread, points_total, moneyline."""
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        types = {n["market_type"] for n in nodes}
+        assert types == {"spread", "points_total", "moneyline"}
+
+    def test_home_away_teams_propagated(self):
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        for n in nodes:
+            assert n["home_team"] == "Houston Rockets"
+            assert n["away_team"] == "New York Knicks"
+
+    def test_no_filtering_unlike_opportunities(self):
+        """Execute returns ALL markets — even non-arb ones that /opportunities drops."""
+        with mock_fetch_all():
+            exec_nodes = client.post("/api/v1/arbitrage/execute").json()
+        with mock_fetch():
+            opps = client.get("/api/v1/arbitrage/opportunities").json()
+        # /execute returns more (all 3 markets) vs /opportunities (only 1 arb)
+        assert len(exec_nodes) > len(opps)
+
+    def test_multiple_games_produce_multiple_nodes(self):
+        """Two game payloads × 3 markets each = 6 nodes."""
+        second_game = {
+            **SAMPLE_PAYLOAD,
+            "home_team": "LA Lakers",
+            "away_team": "Boston Celtics",
+            "date": "2023-01-11T19:00:00Z",
+        }
+        with mock_fetch_all([SAMPLE_PAYLOAD, second_game]):
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        assert len(nodes) == 6
+
+    def test_empty_predictions_returns_empty_list(self):
+        with mock_fetch_all([]):
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        assert nodes == []
+
+    def test_game_with_no_markets_returns_empty(self):
+        no_markets = {**SAMPLE_PAYLOAD, "markets": []}
+        with mock_fetch_all([no_markets]):
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        assert nodes == []
+
+    def test_returns_500_on_service_error(self):
+        with patch(EXECUTE_MOCK_PATH, new_callable=AsyncMock, side_effect=Exception("boom")):
+            r = client.post("/api/v1/arbitrage/execute")
+        assert r.status_code == 500
+
+    def test_spread_market_has_positive_profit_score(self):
+        """Spread +140/+135 is a true arb — profit_score must be > 0."""
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        spread = next(n for n in nodes if n["market_type"] == "spread")
+        assert spread["profit_score"] > 0
+
+    def test_moneyline_non_arb_has_zero_profit_score(self):
+        """Moneyline -120/+115 is not a true arb — profit_score should be 0."""
+        with mock_fetch_all():
+            nodes = client.post("/api/v1/arbitrage/execute").json()
+        ml = next(n for n in nodes if n["market_type"] == "moneyline")
+        assert ml["profit_score"] == 0
+
+
+# ---------------------------------------------------------------------------
 # Helper used inside test methods
 # ---------------------------------------------------------------------------
 

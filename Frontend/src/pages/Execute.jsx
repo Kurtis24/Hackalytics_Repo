@@ -12,7 +12,7 @@ export default function Execute({ onNav }) {
   const [localError, setLocalError] = useState(null);
   const [loadingAction, setLoadingAction] = useState(null); // 'execute' | 'ml'
 
-  /** Execute Backend: run ML pipeline (150 games → Databricks), store nodes on backend, show in app. No redirect. */
+  /** Execute Backend: run ML pipeline (150 games → Databricks), store nodes on backend, show in app, then navigate. */
   async function handleExecute() {
     setLocalLoading(true);
     setLoadingAction('execute');
@@ -21,10 +21,45 @@ export default function Execute({ onNav }) {
     setErrorState(null);
     updateArbitrageData([]);
     try {
+      console.log('[Execute] Calling runMlPipeline...');
       const nodes = await runMlPipeline(true);
+      console.log('[Execute] Received nodes from backend:', nodes);
+      console.log('[Execute] Total nodes received:', nodes?.length || 0);
+
+      // Log first 3 nodes to see their actual data
+      if (nodes && nodes.length > 0) {
+        console.log('[Execute] Sample node data (first 3):');
+        nodes.slice(0, 3).forEach((node, i) => {
+          console.log(`  Node ${i}:`, {
+            category: node.category,
+            home_team: node.home_team,
+            away_team: node.away_team,
+            profit_score: node.profit_score,
+            risk_score: node.risk_score,
+            confidence: node.confidence,
+            volume: node.volume,
+            date: node.date,
+            market_type: node.market_type,
+          });
+        });
+      }
+
       const frontendNodes = adaptMlNodes(nodes);
+      console.log('[Execute] Adapted nodes for frontend:', frontendNodes);
+      console.log('[Execute] Total adapted nodes:', frontendNodes?.length || 0);
+
+      // Log first 3 adapted nodes
+      if (frontendNodes && frontendNodes.length > 0) {
+        console.log('[Execute] Sample adapted nodes (first 3):');
+        frontendNodes.slice(0, 3).forEach((node, i) => {
+          console.log(`  Adapted node ${i}:`, node);
+        });
+      }
+
       updateArbitrageData(frontendNodes);
+      setTimeout(() => onNav('product'), 500);
     } catch (err) {
+      console.error('[Execute] Error:', err);
       setLocalError(err.message);
       setErrorState(err.message);
     } finally {

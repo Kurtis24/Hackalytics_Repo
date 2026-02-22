@@ -27,7 +27,6 @@ async def create_prediction(
     all three market types (moneyline, spread, total). Otherwise returns
     a single MarketPrediction for the specified market.
     """
-    breakpoint()
     try:
         return predict(req)
     except ValueError as exc:

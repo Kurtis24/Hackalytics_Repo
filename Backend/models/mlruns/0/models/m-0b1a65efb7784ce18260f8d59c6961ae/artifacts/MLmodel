@@ -1,0 +1,32 @@
+artifact_path: /Users/keshavworathur/Documents/Uni/Hackalytics_Repo/Backend/models/mlruns/0/models/m-0b1a65efb7784ce18260f8d59c6961ae/artifacts
+flavors:
+  python_function:
+    config:
+      device: null
+    data: data
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.pytorch
+    pickle_module_name: mlflow.pytorch.pickle_module
+    python_version: 3.13.7
+  pytorch:
+    code: null
+    model_data: data
+    pytorch_version: 2.10.0
+is_signature_from_type_hint: false
+mlflow_version: 3.10.0
+model_id: m-0b1a65efb7784ce18260f8d59c6961ae
+model_size_bytes: 128851
+model_uuid: m-0b1a65efb7784ce18260f8d59c6961ae
+prompts: null
+run_id: 4ade90dd8ff34509b5581a206ee8822c
+signature:
+  inputs: '[{"type": "array", "items": {"type": "array", "items": {"type": "float"}},
+    "name": "features", "required": true}, {"type": "array", "items": {"type": "boolean"},
+    "name": "mask", "required": true}, {"type": "long", "name": "market_type", "required":
+    true}]'
+  outputs: '[{"type": "tensor", "tensor-spec": {"dtype": "float32", "shape": [-1]}}]'
+  params: null
+type_hint_from_example: false
+utc_time_created: '2026-02-22 03:17:23.499511'

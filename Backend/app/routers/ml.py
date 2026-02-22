@@ -1,12 +1,13 @@
 """
-ML router: run games -> existing Databricks client (via ml_service) -> nodes.
-Uses only existing ml_service and databricks client; no custom ML logic.
+ML router: legacy endpoint. The primary pipeline is now POST /arbitrage/execute.
+This endpoint is kept for backward compatibility (Load from ML button).
 """
 
 from fastapi import APIRouter, HTTPException
 
-from app.services.ml_service import fetch_nodes_via_databricks
+from app.services.ml_service import fetch_all_predictions
 from app.routers.nodes import _nodes_store
+import pdb
 
 router = APIRouter(prefix="/ml", tags=["ML Pipeline"])
 
@@ -14,17 +15,15 @@ router = APIRouter(prefix="/ml", tags=["ML Pipeline"])
 @router.post("/run", response_model=list)
 async def run_pipeline(store: bool = True) -> list:
     """
-    Use ml_service to send games (live + not live) through the existing
-    Databricks client; return node-shaped outputs. If store=True, append to nodes store.
+    Run the local ML model on all games and return prediction payloads.
+    If store=True, append to nodes store for later retrieval via GET /nodes.
     """
     try:
-        nodes = await fetch_nodes_via_databricks()
-        if store and nodes:
-            _nodes_store.extend(nodes)
-        return nodes
-    except RuntimeError as exc:
-        if "endpoint is stopped" in str(exc).lower() or "start the endpoint" in str(exc).lower():
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+        payloads = await fetch_all_predictions()
+        if store:
+            for p in payloads:
+                _nodes_store.append(p)
+        return payloads
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc

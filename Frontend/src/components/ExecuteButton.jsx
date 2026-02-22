@@ -16,7 +16,7 @@ export default function ExecuteButton() {
     setErrorState(null);
     updateArbitrageData([]);
     try {
-      const nodes = await runMlPipeline(true);
+      const nodes = await runMlPipeline();
       const frontendNodes = adaptMlNodes(nodes);
       updateArbitrageData(frontendNodes);
     } catch (err) {

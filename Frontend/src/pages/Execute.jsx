@@ -1,39 +1,64 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { fetchArbitrageOpportunities } from '../api/nodeApi';
-import { adaptBackendOpportunities } from '../utils/dataAdapter';
+import { runMlPipeline, fetchNodes } from '../api/nodeApi';
+import { adaptMlNodes } from '../utils/dataAdapter';
+import MLLoadingOverlay from '../components/MLLoadingOverlay';
 
 const PF = { fontFamily: "'Playfair Display', Georgia, serif" };
 
 export default function Execute({ onNav }) {
-  const { updateArbitrageData, setLoadingState, setErrorState } = useData();
+  const { updateArbitrageData, setLoadingState, setErrorState, resetToMock } = useData();
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState(null);
+  const [loadingAction, setLoadingAction] = useState(null); // 'execute' | 'ml'
 
+  /** Execute Backend: run ML pipeline (150 games → Databricks), store nodes on backend, show in app. No redirect. */
   async function handleExecute() {
     setLocalLoading(true);
+    setLoadingAction('execute');
     setLoadingState(true);
     setLocalError(null);
     setErrorState(null);
-    
+    updateArbitrageData([]);
     try {
-      const opportunities = await fetchArbitrageOpportunities();
-      const frontendNodes = adaptBackendOpportunities(opportunities);
+      const nodes = await runMlPipeline(true);
+      const frontendNodes = adaptMlNodes(nodes);
       updateArbitrageData(frontendNodes);
-      
-      setTimeout(() => {
-        onNav('product');
-      }, 500);
     } catch (err) {
       setLocalError(err.message);
       setErrorState(err.message);
     } finally {
       setLocalLoading(false);
+      setLoadingAction(null);
       setLoadingState(false);
     }
   }
 
+  /** Load from ML: fetch nodes stored by Execute Backend (GET /nodes) and show in app; then go to product. */
+  async function handleLoadFromMl() {
+    setLocalLoading(true);
+    setLoadingAction('ml');
+    setLoadingState(true);
+    setLocalError(null);
+    setErrorState(null);
+    try {
+      const nodes = await fetchNodes();
+      const frontendNodes = adaptMlNodes(nodes);
+      updateArbitrageData(frontendNodes);
+      setTimeout(() => onNav('product'), 500);
+    } catch (err) {
+      setLocalError(err.message);
+      setErrorState(err.message);
+    } finally {
+      setLocalLoading(false);
+      setLoadingAction(null);
+      setLoadingState(false);
+    }
+  }
+
+  /** Use Mock Data: switch to built-in mock nodes (no backend), then go to product. */
   function handleUseMock() {
+    resetToMock();
     onNav('product');
   }
 
@@ -46,7 +71,11 @@ export default function Execute({ onNav }) {
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
+      position: 'relative',
     }}>
+      {/* Full-screen ML loading overlay when Execute Backend is running the pipeline */}
+      {localLoading && loadingAction === 'execute' && <MLLoadingOverlay />}
+
       <div style={{
         maxWidth: '600px',
         padding: '48px',
@@ -96,6 +125,7 @@ export default function Execute({ onNav }) {
           display: 'flex',
           gap: '16px',
           justifyContent: 'center',
+          flexWrap: 'wrap',
         }}>
           <button
             onClick={handleExecute}
@@ -125,7 +155,37 @@ export default function Execute({ onNav }) {
               e.target.style.transform = 'translateY(0)';
             }}
           >
-            {localLoading ? 'Executing...' : 'Execute Backend'}
+            {localLoading && loadingAction === 'execute' ? 'Running...' : 'Execute Backend'}
+          </button>
+          <button
+            onClick={handleLoadFromMl}
+            disabled={localLoading}
+            style={{
+              ...PF,
+              background: localLoading ? 'rgba(100,149,237,0.10)' : 'rgba(100,149,237,0.20)',
+              border: '2px solid rgba(100,149,237,0.50)',
+              borderRadius: '12px',
+              color: '#6495ed',
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              padding: '16px 40px',
+              cursor: localLoading ? 'not-allowed' : 'pointer',
+              opacity: localLoading ? 0.6 : 1,
+              transition: 'all 0.3s',
+              letterSpacing: '0.02em',
+            }}
+            onMouseEnter={(e) => {
+              if (!localLoading) {
+                e.target.style.background = 'rgba(100,149,237,0.30)';
+                e.target.style.transform = 'translateY(-2px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.target.style.background = 'rgba(100,149,237,0.20)';
+              e.target.style.transform = 'translateY(0)';
+            }}
+          >
+            {localLoading && loadingAction === 'ml' ? 'Loading...' : 'Load from ML'}
           </button>
 
           <button

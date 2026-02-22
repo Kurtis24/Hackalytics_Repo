@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import NodeRender from '../components/NodeRendering/NodeRender';
 import BetSimulator from '../components/BetSimulator/BetSimulator';
-
-const PF = { fontFamily: "'Playfair Display', Georgia, serif" };
+import MLLoadingOverlay from '../components/MLLoadingOverlay';
+import { useData } from '../context/DataContext.jsx';
 
 export default function NodeView() {
   const [selectedNode, setSelectedNode] = useState(null);
+  const { isLoading } = useData();
+
+  // Only show the product graph once loading is complete (e.g. all ML nodes loaded)
+  if (isLoading) {
+    return <MLLoadingOverlay />;
+  }
 
   return (
     <div style={{ 

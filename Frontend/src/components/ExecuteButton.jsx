@@ -1,25 +1,48 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { fetchArbitrageOpportunities } from '../api/nodeApi';
-import { adaptBackendOpportunities } from '../utils/dataAdapter';
+import { runMlPipeline, fetchNodes } from '../api/nodeApi';
+import { adaptMlNodes } from '../utils/dataAdapter';
 
 export default function ExecuteButton() {
   const { updateArbitrageData, setLoadingState, setErrorState, dataMode, resetToMock } = useData();
   const [localLoading, setLocalLoading] = useState(false);
+  const [loadingAction, setLoadingAction] = useState(null); // 'execute' | 'ml'
 
+  /** Execute Backend: run ML pipeline, store nodes on backend, show in app. */
   async function handleExecute() {
     setLocalLoading(true);
+    setLoadingAction('execute');
     setLoadingState(true);
     setErrorState(null);
-    
+    updateArbitrageData([]);
     try {
-      const opportunities = await fetchArbitrageOpportunities();
-      const frontendNodes = adaptBackendOpportunities(opportunities);
+      const nodes = await runMlPipeline(true);
+      const frontendNodes = adaptMlNodes(nodes);
       updateArbitrageData(frontendNodes);
     } catch (err) {
       setErrorState(err.message);
     } finally {
       setLocalLoading(false);
+      setLoadingAction(null);
+      setLoadingState(false);
+    }
+  }
+
+  /** Load from ML: fetch nodes stored by Execute Backend (GET /nodes) and show in app. */
+  async function handleLoadFromMl() {
+    setLocalLoading(true);
+    setLoadingAction('ml');
+    setLoadingState(true);
+    setErrorState(null);
+    try {
+      const nodes = await fetchNodes();
+      const frontendNodes = adaptMlNodes(nodes);
+      updateArbitrageData(frontendNodes);
+    } catch (err) {
+      setErrorState(err.message);
+    } finally {
+      setLocalLoading(false);
+      setLoadingAction(null);
       setLoadingState(false);
     }
   }
@@ -58,7 +81,26 @@ export default function ExecuteButton() {
           transition: 'all 0.2s',
         }}
       >
-        {localLoading ? 'Fetching...' : 'Execute Backend'}
+        {localLoading && loadingAction === 'execute' ? 'Loading...' : 'Execute Backend'}
+      </button>
+      <button
+        onClick={handleLoadFromMl}
+        disabled={localLoading}
+        style={{
+          background: localLoading ? 'rgba(100,149,237,0.10)' : 'rgba(100,149,237,0.20)',
+          border: '1px solid rgba(100,149,237,0.50)',
+          borderRadius: 8,
+          color: '#6495ed',
+          fontSize: 13,
+          fontFamily: 'monospace',
+          fontWeight: 'bold',
+          padding: '12px 24px',
+          cursor: localLoading ? 'not-allowed' : 'pointer',
+          opacity: localLoading ? 0.6 : 1,
+          transition: 'all 0.2s',
+        }}
+      >
+        {localLoading && loadingAction === 'ml' ? 'Running ML...' : 'Load from ML'}
       </button>
       
       {dataMode === 'live' && (

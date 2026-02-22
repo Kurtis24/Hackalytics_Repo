@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     databricks_client_id: str = ""
     databricks_client_secret: str = ""
     databricks_serving_endpoint: str = "discover_arbitrage"
+    # ML pipeline: target number of nodes (games requested from sports, then one ML call per game)
+    ml_target_nodes: int = 150
+    # Optional delay in seconds between each ML request (0 = no delay)
+    ml_request_delay_seconds: float = 0.0
 
     # Data output
     data_output_dir: str = "data/raw"

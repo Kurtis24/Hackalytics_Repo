@@ -59,14 +59,24 @@ class Settings(BaseSettings):
     outcome_sources: list[str] = ["DRAFT_KINGS", "ESPN_BET", "FAN_DUEL"]
 
     # Databricks Model Serving (OAuth M2M)
-    databricks_host: str = "https://dbc-249c9c95-e52b.cloud.databricks.com/"
+    databricks_host: str = "https://dbc-249c9c95-e52b.cloud.databricks.com"
     databricks_client_id: str = ""
     databricks_client_secret: str = ""
     databricks_serving_endpoint: str = "discover_arbitrage"
-    # ML pipeline: target number of nodes (games requested from sports, then one ML call per game)
-    ml_target_nodes: int = 150
-    # Optional delay in seconds between each ML request (0 = no delay)
-    ml_request_delay_seconds: float = 0.0
+    databricks_warehouse_id: str = ""
+
+    # Delta Lake table references
+    delta_games_table: str = "workspace.default.upcoming_games"
+    delta_odds_table: str = "workspace.default.game_odds"
+
+    # Local model checkpoint (used when Databricks endpoint is unavailable)
+    model_checkpoint_path: str = "models/model.ckpt"
+
+    # Model execution mode: "local" | "remote" | "auto"
+    #   local  — local checkpoint inference only
+    #   remote — Databricks serving endpoint only (fails if unreachable)
+    #   auto   — try remote, fall back to local on error
+    model_execution_mode: str = "auto"
 
     # Data output
     data_output_dir: str = "data/raw"

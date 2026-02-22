@@ -8,16 +8,17 @@ Results are sorted by start_time ascending (FR-05).
 
 import asyncio
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Callable, Awaitable
 
 import httpx
 
 from app.models.game import Game
-from app.services.nba_service import fetch_upcoming_nba_games
-from app.services.mlb_service import fetch_upcoming_mlb_games
-from app.services.nfl_service import fetch_upcoming_nfl_games
-from app.services.nhl_service import fetch_upcoming_nhl_games
+from app.services.nba_service import fetch_upcoming_nba_games, fetch_live_nba_games
+from app.services.mlb_service import fetch_upcoming_mlb_games, fetch_live_mlb_games
+from app.services.nfl_service import fetch_upcoming_nfl_games, fetch_live_nfl_games
+from app.services.nhl_service import fetch_upcoming_nhl_games, fetch_live_nhl_games
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +56,7 @@ async def get_all_upcoming_games() -> list[Game]:
     Fetch upcoming games from all four leagues concurrently.
     Returns a combined list sorted by start_time ascending.
     """
-    timeout = httpx.Timeout(10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         nba_task = _fetch_with_retry("NBA", fetch_upcoming_nba_games, client)
         mlb_task = _fetch_with_retry("MLB", fetch_upcoming_mlb_games, client)
         nfl_task = _fetch_with_retry("NFL", fetch_upcoming_nfl_games, client)
@@ -73,3 +73,78 @@ async def get_all_upcoming_games() -> list[Game]:
     now_iso = datetime.now(timezone.utc).isoformat()
     logger.info("Cycle complete at %s — total upcoming games: %d", now_iso, len(all_games))
     return all_games
+
+
+async def get_all_live_games() -> list[Game]:
+    """
+    Fetch currently live (in-progress) games from all four leagues concurrently.
+    Returns a combined list sorted by start_time ascending.
+    """
+    async with httpx.AsyncClient(timeout=None) as client:
+        nba_task = _fetch_with_retry("NBA", fetch_live_nba_games, client)
+        mlb_task = _fetch_with_retry("MLB", fetch_live_mlb_games, client)
+        nfl_task = _fetch_with_retry("NFL", fetch_live_nfl_games, client)
+        nhl_task = _fetch_with_retry("NHL", fetch_live_nhl_games, client)
+
+        results = await asyncio.gather(nba_task, mlb_task, nfl_task, nhl_task)
+
+    all_games: list[Game] = []
+    for league_games in results:
+        all_games.extend(league_games)
+
+    all_games.sort(key=lambda g: g.start_time)
+    logger.info("Live games total: %d", len(all_games))
+    return all_games
+
+
+async def get_all_games() -> list[Game]:
+    """
+    Fetch both upcoming (not live) and live games from all leagues.
+    Returns a combined list sorted by start_time ascending; each game has live=0 or live=1.
+    """
+    upcoming = await get_all_upcoming_games()
+    live = await get_all_live_games()
+    all_games = upcoming + live
+    all_games.sort(key=lambda g: g.start_time)
+    logger.info("All games (upcoming + live): %d", len(all_games))
+    return all_games
+
+
+def _evenly_distribute(games: list[Game], target: int) -> list[Game]:
+    """
+    Select up to `target` games fairly evenly across the four sports (NBA, MLB, NFL, NHL).
+    Uses round-robin by category so distribution stays even when a league has fewer games.
+    """
+    by_category: dict[str, list[Game]] = defaultdict(list)
+    for g in games:
+        by_category[g.category].append(g)
+
+    # Order we pull from: basketball, baseball, american_football, hockey
+    categories = ["basketball", "baseball", "american_football", "hockey"]
+    result: list[Game] = []
+    indices = {c: 0 for c in categories}
+    for _ in range(target):
+        added = False
+        for cat in categories:
+            pool = by_category.get(cat, [])
+            i = indices[cat]
+            if i < len(pool):
+                result.append(pool[i])
+                indices[cat] = i + 1
+                added = True
+                break
+        if not added:
+            break
+    return result
+
+
+async def get_games_for_ml(target: int = 150) -> list[Game]:
+    """
+    Fetch upcoming + live games from all four leagues, then select up to `target`
+    games evenly distributed across NBA, MLB, NFL, NHL (round-robin). Used so we
+    request a fixed number of games (e.g. 150) and call ML once per game.
+    """
+    all_games = await get_all_games()
+    selected = _evenly_distribute(all_games, target)
+    logger.info("Selected %d games for ML (evenly distributed from %d total).", len(selected), len(all_games))
+    return selected

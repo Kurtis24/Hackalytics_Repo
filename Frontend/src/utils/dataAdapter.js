@@ -30,6 +30,25 @@ export function adaptBackendOpportunities(opportunities) {
 }
 
 /**
+ * Normalize ML pipeline / Databricks node output to frontend node format.
+ * ML returns: { category, home_team, away_team, profit_score, risk_score, confidence, volume, date, market_type, sportsbooks }
+ */
+export function adaptMlNodes(nodes) {
+  return (nodes || []).map((n) => ({
+    category: n.category,
+    home_team: n.home_team,
+    away_team: n.away_team,
+    profit_score: n.profit_score,
+    risk_score: n.risk_score,
+    confidence: n.confidence,
+    volume: n.volume ?? 0,
+    Date: n.Date ?? n.date ?? '',
+    market_type: n.market_type ?? '',
+    sportsbooks: n.sportsbooks ?? [],
+  }));
+}
+
+/**
  * Convert API node format to SceneManager format
  * API format: { category, home_team, away_team, profit_score, risk_score, confidence, volume, Date, market_type, sportsbooks }
  * Scene format: { node_id, sport, live, metrics: { confidence, profit, risk, volume } }

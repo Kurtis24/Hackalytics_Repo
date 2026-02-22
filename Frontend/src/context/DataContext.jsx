@@ -32,7 +32,8 @@ export function DataProvider({ children }) {
   }, []);
 
   const getNodes = useCallback(() => {
-    if (dataMode === 'live' && arbitrageData.length > 0) {
+    // In live mode always use arbitrageData (even if empty) so we never show mock after Load from ML / Execute
+    if (dataMode === 'live') {
       return arbitrageData;
     }
     return mockNodes;

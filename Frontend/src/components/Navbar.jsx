@@ -3,6 +3,7 @@ export default function Navbar({ page, onNav }) {
     <button
       key={id}
       onClick={() => onNav(id)}
+      className={`nav-link ${page === id ? 'active' : ''}`}
         style={{
         fontFamily: "'Playfair Display', Georgia, serif",
         background: 'none',
@@ -10,8 +11,7 @@ export default function Navbar({ page, onNav }) {
         cursor: 'pointer',
         fontSize: '0.95rem',
         color: page === id ? '#fff' : 'rgba(255,255,255,0.5)',
-        textDecoration: page === id ? 'underline' : 'none',
-        textUnderlineOffset: '4px',
+        textDecoration: 'none',
         transition: 'color 0.2s',
         padding: '4px 0',
         letterSpacing: '0.03em',

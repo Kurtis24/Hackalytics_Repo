@@ -41,7 +41,7 @@ class SportsbookAPIClient:
         self._client = httpx.AsyncClient(
             base_url=self.BASE_URL,
             headers=self._headers,
-            timeout=30.0,
+            timeout=None,
         )
 
     async def close(self) -> None:

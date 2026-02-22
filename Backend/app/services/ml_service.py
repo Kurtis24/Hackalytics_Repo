@@ -83,7 +83,7 @@ async def fetch_prediction() -> dict:
 
     logger.info("Fetching prediction from ML model: %s", url)
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(timeout=None) as client:
             resp = await client.post(url, json={})
             resp.raise_for_status()
             data = resp.json()

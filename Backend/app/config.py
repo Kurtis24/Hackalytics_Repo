@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     outcome_sources: list[str] = ["DRAFT_KINGS", "ESPN_BET", "FAN_DUEL"]
 
     # Databricks Model Serving (OAuth M2M)
-    databricks_host: str = "https://dbc-68e9cc4f-b99c.cloud.databricks.com"
+    databricks_host: str = "https://dbc-249c9c95-e52b.cloud.databricks.com/"
     databricks_client_id: str = ""
     databricks_client_secret: str = ""
     databricks_serving_endpoint: str = "discover_arbitrage"

@@ -56,8 +56,7 @@ async def get_all_upcoming_games() -> list[Game]:
     Fetch upcoming games from all four leagues concurrently.
     Returns a combined list sorted by start_time ascending.
     """
-    timeout = httpx.Timeout(10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         nba_task = _fetch_with_retry("NBA", fetch_upcoming_nba_games, client)
         mlb_task = _fetch_with_retry("MLB", fetch_upcoming_mlb_games, client)
         nfl_task = _fetch_with_retry("NFL", fetch_upcoming_nfl_games, client)
@@ -81,8 +80,7 @@ async def get_all_live_games() -> list[Game]:
     Fetch currently live (in-progress) games from all four leagues concurrently.
     Returns a combined list sorted by start_time ascending.
     """
-    timeout = httpx.Timeout(10.0)
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    async with httpx.AsyncClient(timeout=None) as client:
         nba_task = _fetch_with_retry("NBA", fetch_live_nba_games, client)
         mlb_task = _fetch_with_retry("MLB", fetch_live_mlb_games, client)
         nfl_task = _fetch_with_retry("NFL", fetch_live_nfl_games, client)

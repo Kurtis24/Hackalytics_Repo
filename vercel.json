@@ -1,11 +1,12 @@
 {
   "version": 2,
+  "name": "hackalytics-frontend",
   "builds": [
     {
-      "src": "package.json",
+      "src": "Frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "Frontend/dist"
       }
     }
   ],

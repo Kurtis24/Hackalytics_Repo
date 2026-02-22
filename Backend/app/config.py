@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     # URL of the ML model endpoint that returns prediction payloads.
     ml_model_url: str = ""
 
+    # ML Pipeline settings
+    ml_target_nodes: int = 150  # Target number of games to fetch for ML
+    ml_request_delay_seconds: float = 0.0  # Delay between ML requests (for rate limiting)
+
     # ------------------------------------------------------------------
     # Arbitrage Middleware — PRD v3 Volume Optimization (§5)
     # ------------------------------------------------------------------

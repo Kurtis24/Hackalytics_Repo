@@ -12,7 +12,7 @@ export default function Execute({ onNav }) {
   const [localError, setLocalError] = useState(null);
   const [loadingAction, setLoadingAction] = useState(null); // 'execute' | 'ml'
 
-  /** Execute Backend: run ML pipeline (150 games → Databricks), store nodes on backend, show in app. No redirect. */
+  /** Execute Backend: run ML pipeline (150 games → Databricks), store nodes on backend, show in app, then navigate. */
   async function handleExecute() {
     setLocalLoading(true);
     setLoadingAction('execute');
@@ -24,6 +24,7 @@ export default function Execute({ onNav }) {
       const nodes = await runMlPipeline(true);
       const frontendNodes = adaptMlNodes(nodes);
       updateArbitrageData(frontendNodes);
+      setTimeout(() => onNav('product'), 500);
     } catch (err) {
       setLocalError(err.message);
       setErrorState(err.message);

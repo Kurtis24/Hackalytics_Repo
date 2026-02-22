@@ -117,3 +117,40 @@ async def fetch_upcoming_nhl_games(client: httpx.AsyncClient) -> list[Game]:
 
     logger.info("NHL: fetched %d upcoming regular season games", len(games))
     return games
+
+
+async def fetch_live_nhl_games(client: httpx.AsyncClient) -> list[Game]:
+    """Fetch only live (in-progress) NHL games. Same schedule, filter gameState LIVE."""
+    now = datetime.now(timezone.utc)
+    fetch_date = now.strftime("%Y-%m-%d")
+
+    resp = await client.get(f"{_BASE}/{fetch_date}")
+    resp.raise_for_status()
+    data = resp.json()
+
+    games: list[Game] = []
+    for game_week in data.get("gameWeek", []):
+        for game in game_week.get("games", []):
+            if game.get("gameType") != _REGULAR_SEASON_TYPE:
+                continue
+            if game.get("gameState") != "LIVE":
+                continue
+
+            start_time = game.get("startTimeUTC", "")
+            home = game.get("homeTeam", {})
+            away = game.get("awayTeam", {})
+            home_abbr = home.get("abbrev", "")
+            home_name = home.get("name", {}).get("default", home_abbr)
+            away_abbr = away.get("abbrev", "")
+            away_name = away.get("name", {}).get("default", away_abbr)
+
+            games.append(Game(
+                category=_CATEGORY,
+                live=1,
+                home_team=_normalize(home_abbr, home_name),
+                away_team=_normalize(away_abbr, away_name),
+                start_time=start_time,
+            ))
+
+    logger.info("NHL: fetched %d live games", len(games))
+    return games

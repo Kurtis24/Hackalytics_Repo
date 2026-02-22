@@ -3,6 +3,52 @@
  */
 
 /**
+ * Convert backend ArbitrageOpportunity to frontend node format
+ * Backend format: { category, home_team, away_team, profit_score, risk_score, confidence, optimal_volume, date, market_type, sportsbooks }
+ * Frontend format: { category, home_team, away_team, profit_score, risk_score, confidence, volume, Date, market_type, sportsbooks }
+ */
+export function adaptBackendOpportunity(opportunity) {
+  return {
+    category: opportunity.category,
+    home_team: opportunity.home_team,
+    away_team: opportunity.away_team,
+    profit_score: opportunity.profit_score,
+    risk_score: opportunity.risk_score,
+    confidence: opportunity.confidence,
+    volume: opportunity.optimal_volume,
+    Date: opportunity.date,
+    market_type: opportunity.market_type,
+    sportsbooks: opportunity.sportsbooks,
+  };
+}
+
+/**
+ * Convert array of backend ArbitrageOpportunity to frontend node format
+ */
+export function adaptBackendOpportunities(opportunities) {
+  return opportunities.map(opp => adaptBackendOpportunity(opp));
+}
+
+/**
+ * Normalize ML pipeline / Databricks node output to frontend node format.
+ * ML returns: { category, home_team, away_team, profit_score, risk_score, confidence, volume, date, market_type, sportsbooks }
+ */
+export function adaptMlNodes(nodes) {
+  return (nodes || []).map((n) => ({
+    category: n.category,
+    home_team: n.home_team,
+    away_team: n.away_team,
+    profit_score: n.profit_score,
+    risk_score: n.risk_score,
+    confidence: n.confidence,
+    volume: n.volume ?? 0,
+    Date: n.Date ?? n.date ?? '',
+    market_type: n.market_type ?? '',
+    sportsbooks: n.sportsbooks ?? [],
+  }));
+}
+
+/**
  * Convert API node format to SceneManager format
  * API format: { category, home_team, away_team, profit_score, risk_score, confidence, volume, Date, market_type, sportsbooks }
  * Scene format: { node_id, sport, live, metrics: { confidence, profit, risk, volume } }
@@ -10,10 +56,14 @@
 export function adaptNodeForScene(apiNode, index = 0) {
   const nodeId = `${apiNode.category.toUpperCase()}_${apiNode.home_team}_${apiNode.away_team}_${apiNode.market_type}_${index}`.replace(/\s/g, '_');
   
+  const now = new Date();
+  const nodeDate = new Date(apiNode.Date || apiNode.date);
+  const isToday = nodeDate.toDateString() === now.toDateString();
+  
   return {
     node_id: nodeId,
     sport: apiNode.category,
-    live: apiNode.profit_score > 0.8 && apiNode.risk_score < 0.4,
+    live: isToday && apiNode.profit_score > 0.5,
     metrics: {
       confidence: apiNode.confidence,
       profit: apiNode.profit_score * 10,
@@ -24,7 +74,7 @@ export function adaptNodeForScene(apiNode, index = 0) {
       home_team: apiNode.home_team,
       away_team: apiNode.away_team,
       market_type: apiNode.market_type,
-      date: apiNode.Date,
+      date: apiNode.Date || apiNode.date,
       sportsbooks: apiNode.sportsbooks,
       volume: apiNode.volume,
     },

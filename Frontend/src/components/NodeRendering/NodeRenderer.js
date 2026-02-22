@@ -95,6 +95,18 @@ export class NodeRenderer {
     this._focusNeighborMesh.visible = false;
 
     const n = nodes.length;
+    if (n === 0) {
+      this.positions  = new Float32Array(0);
+      this.scales     = new Float32Array(0);
+      this.profit     = new Float32Array(0);
+      this.confidence = new Float32Array(0);
+      this.risk       = new Float32Array(0);
+      this.live       = new Uint8Array(0);
+      this.sports     = new Uint8Array(0);
+      this.nodeIds    = [];
+      this.rawData    = [];
+      return;
+    }
     this.positions  = new Float32Array(n * 3);
     this.scales     = new Float32Array(n);
     this.profit     = new Float32Array(n);
@@ -140,11 +152,15 @@ export class NodeRenderer {
 
     // ── Pass 2: build single InstancedMesh with per-instance color ────────
     const mat = new THREE.MeshStandardMaterial({
-      color:     0xffffff, // white base so instance color is used directly
-      roughness: 0.75,
-      metalness: 0.10,
+      color:     0xffffff,
+      roughness: 0.4,
+      metalness: 0.3,
+      emissive:  0x000000,
+      emissiveIntensity: 0.2,
     });
     this._nodeMesh = new THREE.InstancedMesh(this._geometry, mat, n);
+    this._nodeMesh.castShadow = true;
+    this._nodeMesh.receiveShadow = true;
     this._nodeMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 
     const color = new THREE.Color();
@@ -154,8 +170,10 @@ export class NodeRenderer {
       this._getNodeColor(i, color);
       this._nodeMesh.setColorAt(i, color);
     }
-    this._nodeMesh.instanceMatrix.needsUpdate = true;
-    this._nodeMesh.instanceColor.needsUpdate  = true;
+    if (this._nodeMesh) {
+      this._nodeMesh.instanceMatrix.needsUpdate = true;
+      if (this._nodeMesh.instanceColor) this._nodeMesh.instanceColor.needsUpdate = true;
+    }
     this.scene.add(this._nodeMesh);
 
     this._buildLiveRings();
@@ -185,13 +203,14 @@ export class NodeRenderer {
     this.positions[i * 3 + 2] = rsk  * RISK_SCALE  + RISK_OFFSET;
 
     this._writeDummy(i);
-    this._nodeMesh.setMatrixAt(i, this._dummy.matrix);
-    this._nodeMesh.instanceMatrix.needsUpdate = true;
-
-    const color = new THREE.Color();
-    this._getNodeColor(i, color);
-    this._nodeMesh.setColorAt(i, color);
-    this._nodeMesh.instanceColor.needsUpdate = true;
+    if (this._nodeMesh) {
+      this._nodeMesh.setMatrixAt(i, this._dummy.matrix);
+      this._nodeMesh.instanceMatrix.needsUpdate = true;
+      const color = new THREE.Color();
+      this._getNodeColor(i, color);
+      this._nodeMesh.setColorAt(i, color);
+      if (this._nodeMesh.instanceColor) this._nodeMesh.instanceColor.needsUpdate = true;
+    }
   }
 
   /**
@@ -339,6 +358,7 @@ export class NodeRenderer {
     if (nodeIndex === this._hoveredIndex) return;
     this._hoveredIndex = nodeIndex;
     if (nodeIndex < 0) { this._highlightMesh.visible = false; return; }
+    if (!this._nodeMesh || !this.nodeIds.length || nodeIndex >= this.nodeIds.length) return;
 
     const s = this.scales[nodeIndex] * 1.35;
     this._dummy.position.copy(this._nodePosition(nodeIndex));
@@ -346,7 +366,7 @@ export class NodeRenderer {
     this._dummy.rotation.set(0, 0, 0);
     this._dummy.updateMatrix();
     this._highlightMesh.setMatrixAt(0, this._dummy.matrix);
-    this._highlightMesh.instanceMatrix.needsUpdate = true;
+    if (this._highlightMesh.instanceMatrix) this._highlightMesh.instanceMatrix.needsUpdate = true;
     this._highlightMesh.visible = true;
   }
 
@@ -364,6 +384,10 @@ export class NodeRenderer {
   }
 
   getNodeData(nodeIndex) {
+    const raw = this.rawData[nodeIndex] || {};
+    const sportIndex = this.sports[nodeIndex];
+    const sportName = ['baseball', 'football', 'basketball', 'hockey'][sportIndex];
+    
     return {
       nodeId:     this.nodeIds[nodeIndex],
       profit:     this.profit[nodeIndex],
@@ -371,6 +395,13 @@ export class NodeRenderer {
       risk:       this.risk[nodeIndex],
       scale:      this.scales[nodeIndex],
       live:       !!this.live[nodeIndex],
+      sport:      sportName,
+      homeTeam:   raw.home_team,
+      awayTeam:   raw.away_team,
+      marketType: raw.market_type,
+      date:       raw.date,
+      volume:     raw.volume,
+      sportsbooks: raw.sportsbooks || [],
     };
   }
 
@@ -425,6 +456,7 @@ export class NodeRenderer {
    * Also syncs live ring visibility.
    */
   _setNodeVisibility(visibleSet) {
+    if (!this._nodeMesh) return;
     const n = this.nodeIds.length;
     for (let i = 0; i < n; i++) {
       this._dummy.position.set(
@@ -442,7 +474,7 @@ export class NodeRenderer {
     this._nodeMesh.instanceMatrix.needsUpdate = true;
 
     // Sync live ring visibility
-    if (this._liveRingMesh) {
+    if (this._liveRingMesh && this._liveRingMesh.instanceMatrix) {
       for (let j = 0; j < this._liveIndices.length; j++) {
         const i    = this._liveIndices[j];
         const show = !visibleSet || visibleSet.has(i);
@@ -468,7 +500,7 @@ export class NodeRenderer {
       this._dummy.rotation.set(0, 0, 0);
       this._dummy.updateMatrix();
       this._focusCenterMesh.setMatrixAt(0, this._dummy.matrix);
-      this._focusCenterMesh.instanceMatrix.needsUpdate = true;
+      if (this._focusCenterMesh.instanceMatrix) this._focusCenterMesh.instanceMatrix.needsUpdate = true;
       this._focusCenterMesh.count   = 1;
       this._focusCenterMesh.visible = true;
     }
@@ -487,7 +519,7 @@ export class NodeRenderer {
       this._focusNeighborMesh.setMatrixAt(instIdx++, this._dummy.matrix);
     });
     this._focusNeighborMesh.count   = instIdx;
-    this._focusNeighborMesh.instanceMatrix.needsUpdate = true;
+    if (this._focusNeighborMesh.instanceMatrix) this._focusNeighborMesh.instanceMatrix.needsUpdate = true;
     this._focusNeighborMesh.visible = instIdx > 0;
   }
 
@@ -540,7 +572,7 @@ export class NodeRenderer {
       this._dummy.updateMatrix();
       this._liveRingMesh.setMatrixAt(j, this._dummy.matrix);
     }
-    this._liveRingMesh.instanceMatrix.needsUpdate = true;
+    if (this._liveRingMesh.instanceMatrix) this._liveRingMesh.instanceMatrix.needsUpdate = true;
     this.scene.add(this._liveRingMesh);
   }
 

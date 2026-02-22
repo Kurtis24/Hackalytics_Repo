@@ -5,8 +5,11 @@ import { EdgeRenderer }          from './EdgeRenderer.js';
 import { InteractionController } from './InteractionController.js';
 
 export class SceneManager {
-  /** @param {HTMLCanvasElement} canvas */
-  constructor(canvas) {
+  /** 
+   * @param {HTMLCanvasElement} canvas 
+   * @param {Function} onNodeSelect
+   */
+  constructor(canvas, onNodeSelect = null) {
     this.canvas = canvas;
 
     // Store bound handler so we can remove it later
@@ -17,7 +20,12 @@ export class SceneManager {
       canvas,
       antialias:        true,
       powerPreference:  'high-performance',
+      alpha:            true,
     });
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.2;
     // Cap DPR at 2 — do NOT render at DPR 3 on Retina displays
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
@@ -29,17 +37,29 @@ export class SceneManager {
     // ── Scene ─────────────────────────────────────────────────────────────
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x07070f);
+    this.scene.fog = new THREE.Fog(0x07070f, 2000, 5000);
 
     // ── Camera ────────────────────────────────────────────────────────────
     this.camera = new THREE.PerspectiveCamera(60, w / h, 1, 40000);
     this.camera.position.set(0, 800, 1500);
 
-    // ── Lights (minimal per spec) ─────────────────────────────────────────
-    // One directional light only — no shadows, no HDR, no additive blending
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
-    dirLight.position.set(1, 2, 3);
-    this.scene.add(dirLight);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    // ── Enhanced lighting for 3D depth ────────────────────────────────────
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.0);
+    keyLight.position.set(5, 10, 7);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.width = 2048;
+    keyLight.shadow.mapSize.height = 2048;
+    this.scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x4080ff, 0.8);
+    fillLight.position.set(-5, 3, -5);
+    this.scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0xff8040, 0.6);
+    rimLight.position.set(0, -5, -10);
+    this.scene.add(rimLight);
+
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.3));
 
     // ── Sub-systems ───────────────────────────────────────────────────────
     this.cameraController      = new CameraController(this.camera, canvas);
@@ -50,6 +70,7 @@ export class SceneManager {
       this.nodeRenderer,
       this.cameraController,
       canvas,
+      onNodeSelect,
     );
 
     // ── Axes ──────────────────────────────────────────────────────────────

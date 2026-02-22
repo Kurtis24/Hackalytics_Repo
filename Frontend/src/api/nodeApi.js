@@ -1,9 +1,59 @@
-// API endpoints for node management
+// API endpoints for node management, games, and ML pipeline
+//
+// Usage from the front end:
+//   • Games: fetchAllGames(), fetchLiveGames() — GET /games/all, /games/live
+//   • ML:    runMlPipeline(store?) — POST /ml/run (games → Databricks → nodes; store=true appends to GET /nodes)
+//   • Nodes: fetchNodes(), addNode(), addBulkNodes(nodes) — GET /nodes, POST /nodes, POST /nodes/bulk
+//   • Run ML and show in app: runMlPipeline(true) then adaptMlNodes(nodes) then updateArbitrageData(nodes) — see ExecuteButton / Execute page
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+
+// ---------------------------------------------------------------------------
+// Games (live + not live)
+// ---------------------------------------------------------------------------
 
 /**
- * Fetch all nodes from the backend
+ * Fetch all games (upcoming + live) from the backend.
+ * @returns {Promise<Array<{ category, live, home_team, away_team, start_time }>>}
+ */
+export async function fetchAllGames() {
+  const response = await fetch(`${API_BASE_URL}/games/all`);
+  if (!response.ok) throw new Error(`Failed to fetch games: ${response.statusText}`);
+  return response.json();
+}
+
+/**
+ * Fetch only currently live (in-progress) games.
+ */
+export async function fetchLiveGames() {
+  const response = await fetch(`${API_BASE_URL}/games/live`);
+  if (!response.ok) throw new Error(`Failed to fetch live games: ${response.statusText}`);
+  return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// ML pipeline (games → Databricks → nodes)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run the ML pipeline: backend fetches games (live + not live), sends them
+ * to the Databricks client, returns node-shaped results.
+ * @param {boolean} [store=true] - If true, backend also appends nodes to the nodes store (GET /nodes).
+ * @returns {Promise<Array>} List of nodes (same shape as Node model).
+ */
+export async function runMlPipeline(store = true) {
+  const url = `${API_BASE_URL}/ml/run${store ? '?store=true' : '?store=false'}`;
+  const response = await fetch(url, { method: 'POST' });
+  if (!response.ok) throw new Error(`ML pipeline failed: ${response.statusText}`);
+  return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Nodes (single + bulk)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch all nodes from the backend (includes any stored from ML pipeline or bulk upload).
  */
 export async function fetchNodes() {
   try {
@@ -19,7 +69,7 @@ export async function fetchNodes() {
 }
 
 /**
- * Add a new node
+ * Add a new node (single).
  */
 export async function addNode(nodeData) {
   try {
@@ -38,6 +88,21 @@ export async function addNode(nodeData) {
     console.error('Error adding node:', error);
     throw error;
   }
+}
+
+/**
+ * Accept bulk nodes at a time (e.g. outputs from Databricks / ML pipeline).
+ * @param {Array<object>} nodes - Array of node objects (category, home_team, away_team, profit_score, risk_score, confidence, volume, date/Date, market_type, sportsbooks).
+ * @returns {Promise<{ accepted: number, total: number }>}
+ */
+export async function addBulkNodes(nodes) {
+  const response = await fetch(`${API_BASE_URL}/nodes/bulk`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(nodes),
+  });
+  if (!response.ok) throw new Error(`Failed to add bulk nodes: ${response.statusText}`);
+  return response.json();
 }
 
 /**
@@ -115,6 +180,23 @@ export async function deletePastNodes() {
     return await response.json();
   } catch (error) {
     console.error('Error deleting past nodes:', error);
+    throw error;
+  }
+}
+
+/**
+ * Fetch arbitrage opportunities from the backend
+ * Calls the ML model and arbitrage service to get real-time opportunities
+ */
+export async function fetchArbitrageOpportunities() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/arbitrage/opportunities`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch arbitrage opportunities: ${response.statusText}`);
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching arbitrage opportunities:', error);
     throw error;
   }
 }

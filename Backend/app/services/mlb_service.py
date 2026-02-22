@@ -104,3 +104,53 @@ async def fetch_upcoming_mlb_games(client: httpx.AsyncClient) -> list[Game]:
 
     logger.info("MLB: fetched %d upcoming games", len(games))
     return games
+
+
+async def fetch_live_mlb_games(client: httpx.AsyncClient) -> list[Game]:
+    """Fetch only live (in-progress) MLB games. Same schedule API, filter abstractGameState Live."""
+    now = datetime.now(timezone.utc)
+    start_date = now.strftime("%Y-%m-%d")
+    end_date = start_date
+
+    resp = await client.get(
+        _BASE,
+        params={
+            "sportId": 1,
+            "startDate": start_date,
+            "endDate": end_date,
+            "gameType": "R",
+            "fields": (
+                "dates,date,games,gamePk,gameDate,"
+                "status,abstractGameState,"
+                "teams,home,away,team,name,abbreviation"
+            ),
+        },
+    )
+    resp.raise_for_status()
+    data = resp.json()
+
+    games: list[Game] = []
+    for date_entry in data.get("dates", []):
+        for game in date_entry.get("games", []):
+            state = game.get("status", {}).get("abstractGameState", "")
+            if state != "Live":
+                continue
+
+            home_team = game.get("teams", {}).get("home", {}).get("team", {})
+            away_team = game.get("teams", {}).get("away", {}).get("team", {})
+            home_name = home_team.get("name", "")
+            away_name = away_team.get("name", "")
+            home_abbr = home_team.get("abbreviation", "")
+            away_abbr = away_team.get("abbreviation", "")
+            start_time = game.get("gameDate", "")
+
+            games.append(Game(
+                category=_CATEGORY,
+                live=1,
+                home_team=_normalize(home_abbr, home_name),
+                away_team=_normalize(away_abbr, away_name),
+                start_time=start_time,
+            ))
+
+    logger.info("MLB: fetched %d live games", len(games))
+    return games

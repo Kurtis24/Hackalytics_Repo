@@ -1,0 +1,7 @@
+{
+  "code-runner.executorMap": {
+    "python": "cd $workspaceRoot/Backend && venv/bin/python -u"
+  },
+  "code-runner.fileDirectoryAsCwd": false,
+  "python.defaultInterpreterPath": "${workspaceFolder}/Backend/venv/bin/python"
+}

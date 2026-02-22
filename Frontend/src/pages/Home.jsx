@@ -47,7 +47,7 @@ function AnalyzeMarketCard() {
             fontStyle: 'normal',
             fontWeight: 300,
           }}>
-            Trade 70+ major, minor, and exotic<br />currency pairs with tight spreads<br />and real-time execution
+            Find mismatched markets and<br /> turn them into arbitrage opportunities
           </p>
         </div>
 
@@ -66,59 +66,16 @@ function AnalyzeMarketCard() {
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(59, 130, 246, 0.2)',
         }}>
-          {/* Arbitrage triangle visualization */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <svg width="240" height="160" viewBox="0 0 200 140" style={{ opacity: 0.7 }}>
-              {/* Triangle connecting three currency pairs */}
-              <defs>
-                <filter id="glow">
-                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-              </defs>
-
-              {/* Connection lines */}
-              <line x1="100" y1="20" x2="40" y2="110" stroke="#3b82f6" strokeWidth="2" opacity="0.6" filter="url(#glow)" />
-              <line x1="40" y1="110" x2="160" y2="110" stroke="#3b82f6" strokeWidth="2" opacity="0.6" filter="url(#glow)" />
-              <line x1="160" y1="110" x2="100" y2="20" stroke="#3b82f6" strokeWidth="2" opacity="0.6" filter="url(#glow)" />
-
-              {/* Currency nodes */}
-              <circle cx="100" cy="20" r="8" fill="#3b82f6" filter="url(#glow)" />
-              <circle cx="40" cy="110" r="8" fill="#3b82f6" filter="url(#glow)" />
-              <circle cx="160" cy="110" r="8" fill="#3b82f6" filter="url(#glow)" />
-
-              {/* Arrows */}
-              <path d="M 65 65 L 60 70 L 70 70 Z" fill="#60a5fa" />
-              <path d="M 100 65 L 95 60 L 95 70 Z" fill="#60a5fa" />
-              <path d="M 135 65 L 140 70 L 130 70 Z" fill="#60a5fa" />
-            </svg>
-          </div>
-
-          {/* Data overlay */}
-          <div style={{
-            position: 'absolute',
-            bottom: '10px',
-            left: '10px',
-            right: '10px',
-            fontSize: '9px',
-            color: 'rgba(255,255,255,0.6)',
-            fontFamily: 'monospace',
-            display: 'flex',
-            justifyContent: 'space-between',
-          }}>
-            <span>EUR/USD</span>
-            <span>USD/JPY</span>
-            <span>EUR/JPY</span>
-          </div>
+          <img
+            src="/arbitrage-diagram.png"
+            alt="Arbitrage flow"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              padding: '10px',
+            }}
+          />
         </div>
       </div>
 
@@ -308,53 +265,16 @@ function LLMModelCard() {
           backdropFilter: 'blur(10px)',
           border: '1px solid rgba(59, 130, 246, 0.2)',
         }}>
-          {/* Neural network visualization */}
-          <div style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-            <svg width="240" height="160" viewBox="0 0 200 140" style={{ opacity: 0.7 }}>
-              <defs>
-                <filter id="glowLLM">
-                  <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-                  <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                  </feMerge>
-                </filter>
-              </defs>
-
-              {/* Neural network connections */}
-              <line x1="40" y1="40" x2="100" y2="70" stroke="#3b82f6" strokeWidth="1.5" opacity="0.5" />
-              <line x1="40" y1="100" x2="100" y2="70" stroke="#3b82f6" strokeWidth="1.5" opacity="0.5" />
-              <line x1="100" y1="70" x2="160" y2="40" stroke="#3b82f6" strokeWidth="1.5" opacity="0.5" />
-              <line x1="100" y1="70" x2="160" y2="100" stroke="#3b82f6" strokeWidth="1.5" opacity="0.5" />
-
-              {/* Nodes */}
-              <circle cx="40" cy="40" r="6" fill="#3b82f6" filter="url(#glowLLM)" />
-              <circle cx="40" cy="100" r="6" fill="#3b82f6" filter="url(#glowLLM)" />
-              <circle cx="100" cy="70" r="8" fill="#60a5fa" filter="url(#glowLLM)" />
-              <circle cx="160" cy="40" r="6" fill="#3b82f6" filter="url(#glowLLM)" />
-              <circle cx="160" cy="100" r="6" fill="#3b82f6" filter="url(#glowLLM)" />
-            </svg>
-          </div>
-
-          {/* Data overlay */}
-          <div style={{
-            position: 'absolute',
-            bottom: '10px',
-            left: '10px',
-            right: '10px',
-            fontSize: '9px',
-            color: 'rgba(255,255,255,0.6)',
-            fontFamily: 'monospace',
-            textAlign: 'center',
-          }}>
-            Neural Network
-          </div>
+          <img
+            src="/neural-network.png"
+            alt="Neural network"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'contain',
+              padding: '10px',
+            }}
+          />
         </div>
       </div>
     </div>
@@ -378,13 +298,6 @@ const CARDS = [
     btn: 'View Model',
     customContent: <LLMModelCard />,
   },
-  {
-    id: 'execute', variant: 'dark',
-    title: 'Execute Arb',
-    body:  'Automatically size and place stakes across books at optimal volume',
-    visual: null,
-    btn: 'Try Now',
-  },
 ]
 
 export default function Home({ onNav }) {
@@ -392,39 +305,6 @@ export default function Home({ onNav }) {
   const [viewMoreFading, setViewMoreFading] = useState(false)
   const scrollRef = useRef(null)
   const fadeTimeoutRef = useRef(null)
-  const [visibility, setVisibility] = useState({ how: 1, cta: 1 })
-  const howRef = useRef(null)
-  const ctaRef = useRef(null)
-  const pendingRef = useRef({ how: 1, cta: 1 })
-  const rafRef = useRef(null)
-
-  useEffect(() => {
-    const obs = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          const id = entry.target.dataset.fadeSection
-          if (!id) return
-          pendingRef.current[id] = entry.intersectionRatio
-        })
-        if (rafRef.current == null) {
-          rafRef.current = requestAnimationFrame(() => {
-            rafRef.current = null
-            setVisibility({ ...pendingRef.current })
-          })
-        }
-      },
-      { threshold: [0, 0.2, 0.4, 0.6, 0.8, 1], rootMargin: '0px 0px -5% 0px' }
-    )
-    const t = setTimeout(() => {
-      if (howRef.current) obs.observe(howRef.current)
-      if (ctaRef.current) obs.observe(ctaRef.current)
-    }, 0)
-    return () => {
-      clearTimeout(t)
-      if (rafRef.current != null) cancelAnimationFrame(rafRef.current)
-      obs.disconnect()
-    }
-  }, [])
 
   const handleScroll = (e) => {
     if (e.target.scrollLeft > 10) {
@@ -530,26 +410,26 @@ export default function Home({ onNav }) {
         </div>
 
         {/* Headline */}
-        <h1 style={{
+        <h1 className="fade-in-hero" style={{
           ...PF,
-          fontSize: 'clamp(2.5rem, 5.5vw, 3.8rem)', 
+          fontSize: 'clamp(2.5rem, 5.5vw, 3.8rem)',
           fontWeight: 500,
-          fontStyle: 'italic', 
+          fontStyle: 'italic',
           textAlign: 'center',
           lineHeight: 1.15,
           letterSpacing: '0.01em',
           color: '#fff',
-          maxWidth: 680, 
+          maxWidth: 680,
           margin: '0 auto 32px', /* Starts right below the 36vh padding (inside the planet) */
           position: 'relative',
           zIndex: 5,
         }}>
-          AI That finds arbitrage<br />and invests
+          AI that finds arbitrage<br />and invests
         </h1>
 
         {/* CTA */}
         <button
-          className="btn-outline"
+          className="btn-outline fade-in-delayed-1"
           style={{ ...PF, zIndex: 5, position: 'relative' }}
           onClick={() => onNav('product')}
         >
@@ -557,7 +437,7 @@ export default function Home({ onNav }) {
         </button>
 
         {/* T-shaped connector: vertical stem down, then horizontal line (no flip) */}
-        <div style={{
+        <div className="fade-in-delayed-1" style={{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -568,7 +448,7 @@ export default function Home({ onNav }) {
           <div style={{
             width: 1,
             height: 48,
-            background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), rgba(255,255,255,0.6))',
+            background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.9))',
             boxShadow: '0 0 8px rgba(255,255,255,0.35)',
           }} />
           <div style={{
@@ -593,17 +473,7 @@ export default function Home({ onNav }) {
       </section>
 
       {/* ─── HOW WE DO IT ──────────────────────────────────────── */}
-      <section
-        ref={howRef}
-        data-fade-section="how"
-        style={{
-          padding: '30px 0 80px',
-          background: '#000',
-          opacity: visibility.how,
-          transform: `translateY(${16 * (1 - visibility.how)}px)`,
-          transition: 'opacity 0.25s ease-out, transform 0.25s ease-out',
-        }}
-      >
+      <section className="fade-in-delayed-2" style={{ padding: '30px 0 80px', background: '#000' }}>
 
         <h2 style={{
           ...PF,
@@ -728,19 +598,35 @@ export default function Home({ onNav }) {
       </section>
 
       {/* ─── JOIN CTA ──────────────────────────────────────────── */}
-      <section
-        ref={ctaRef}
-        data-fade-section="cta"
-        style={{
+      <section style={{
+        position: 'relative',
+        padding: '80px 24px 160px',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 36,
+        overflow: 'hidden', background: '#000',
+      }}>
+        {/* T-shaped connector (flipped) */}
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          marginBottom: 20,
           position: 'relative',
-          padding: '80px 24px 160px',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 36,
-          overflow: 'hidden', background: '#000',
-          opacity: visibility.cta,
-          transform: `translateY(${16 * (1 - visibility.cta)}px)`,
-          transition: 'opacity 0.25s ease-out, transform 0.25s ease-out',
-        }}
-      >
+          zIndex: 2,
+        }}>
+          <div style={{
+            width: 320,
+            height: 1,
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.8) 50%, transparent)',
+            boxShadow: '0 0 10px rgba(255,255,255,0.3)',
+          }} />
+          <div style={{
+            width: 1,
+            height: 48,
+            background: 'linear-gradient(to bottom, rgba(255,255,255,0.9), transparent)',
+            boxShadow: '0 0 8px rgba(255,255,255,0.35)',
+          }} />
+        </div>
+
         <h2 style={{
           ...PF,
           fontSize: 'clamp(2.2rem, 6vw, 3.8rem)',
@@ -763,19 +649,22 @@ export default function Home({ onNav }) {
           Try Now
         </button>
 
-        {/* Wave glow layers */}
-        <div className="wave-container">
-          <div className="wave wave-1" />
-          <div className="wave wave-2" />
-          <div className="wave wave-3" />
-          <div style={{
-            position: 'absolute', bottom: -60, left: '50%',
-            transform: 'translateX(-50%)',
-            width: '90%', height: 180,
-            background: 'radial-gradient(ellipse at 50% 100%, rgba(37,99,235,0.45) 0%, transparent 70%)',
-            filter: 'blur(18px)',
-          }} />
-        </div>
+        {/* Blue wave gradient at bottom */}
+        <div style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: '100%',
+          height: '300px',
+          pointerEvents: 'none',
+          zIndex: 1,
+          background: `
+            radial-gradient(ellipse 80% 50% at 20% 50%, rgba(59, 130, 246, 0.4) 0%, transparent 50%),
+            radial-gradient(ellipse 80% 50% at 50% 60%, rgba(37, 99, 235, 0.5) 0%, transparent 50%),
+            radial-gradient(ellipse 80% 50% at 80% 50%, rgba(59, 130, 246, 0.4) 0%, transparent 50%),
+            linear-gradient(180deg, transparent 0%, rgba(29, 78, 216, 0.2) 50%, transparent 100%)
+          `,
+        }}></div>
       </section>
 
     </main>

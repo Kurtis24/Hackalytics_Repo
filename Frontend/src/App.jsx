@@ -6,7 +6,7 @@ import Execute from './pages/Execute'
 import NodeView from './pages/NodeView'
 
 export default function App() {
-  const [page, setPage] = useState('product')
+  const [page, setPage] = useState('home')
   const [showExecute, setShowExecute] = useState(true)
 
   const handleNav = (newPage) => {

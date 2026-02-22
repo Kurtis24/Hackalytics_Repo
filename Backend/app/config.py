@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     #   auto   — try remote, fall back to local on error
     model_execution_mode: str = "local"
 
+
     # Data output
     data_output_dir: str = "data/raw"
 

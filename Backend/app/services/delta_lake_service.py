@@ -40,9 +40,9 @@ def _get_client():
     return _client
 
 
+
 _client = None
-
-
+ main
 # ── Sample / fallback data ───────────────────────────────────────────
 
 SAMPLE_GAMES = [

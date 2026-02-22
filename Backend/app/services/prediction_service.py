@@ -23,9 +23,6 @@ import torch
 from app.config import settings
 from app.models.prediction import PredictionRequest
 from app.models.market_prediction import MarketPrediction
-<< << << < HEAD
-== == == =
->>>>>> > bdb80bd(fix: add support for local and remote execution modes)
 
 logger = logging.getLogger(__name__)
 

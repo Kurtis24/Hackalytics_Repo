@@ -16,7 +16,7 @@ from app.models.game import Game
 logger = logging.getLogger(__name__)
 
 _BASE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
-_CATEGORY = "american_football"
+_CATEGORY = "football"
 
 _TEAM_MAP: dict[str, str] = {
     "ARI": "Arizona Cardinals",

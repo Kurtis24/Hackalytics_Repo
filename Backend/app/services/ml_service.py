@@ -78,7 +78,7 @@ def _game_prediction_to_payload(game_resp) -> dict[str, Any]:
         })
 
     return {
-        "category": "basketball",       # game_prediction_service doesn't carry category
+        "category": game_resp.category,  # Use actual category from game response
         "date": game_resp.start_time,
         "home_team": game_resp.home_team,
         "away_team": game_resp.away_team,
@@ -87,15 +87,25 @@ def _game_prediction_to_payload(game_resp) -> dict[str, Any]:
 
 
 def _fetch_all_predictions_sync() -> list[dict[str, Any]]:
-    """Synchronous: run local model on all games, return PredictionInput dicts."""
+    """Synchronous: run local model on all games from all sports, return PredictionInput dicts."""
     from app.services.game_prediction_service import get_all_game_predictions
 
+    # Fetch all games (no category filter = all sports)
     response = get_all_game_predictions()
 
     payloads: list[dict[str, Any]] = []
     for game_resp in response.games:
         if game_resp.markets:
             payloads.append(_game_prediction_to_payload(game_resp))
+
+    logger.info("Fetched predictions across all sports: %d total games", len(payloads))
+
+    # Log category breakdown
+    categories = {}
+    for payload in payloads:
+        cat = payload.get("category", "unknown")
+        categories[cat] = categories.get(cat, 0) + 1
+    logger.info("Category breakdown: %s", categories)
 
     return payloads
 

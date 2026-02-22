@@ -153,6 +153,7 @@ def _build_game_prediction(game: dict, odds_rows: list[dict]) -> GamePredictionR
 
     return GamePredictionResponse(
         game_id=game.get("game_id", "unknown"),
+        category=game.get("category", "basketball"),
         home_team=game.get("home_team", "unknown"),
         away_team=game.get("away_team", "unknown"),
         start_time=game.get("start_time", ""),

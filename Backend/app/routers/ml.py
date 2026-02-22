@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.services.ml_service import fetch_all_predictions
 from app.routers.nodes import _nodes_store
+import pdb
 
 router = APIRouter(prefix="/ml", tags=["ML Pipeline"])
 
@@ -18,6 +19,7 @@ async def run_pipeline(store: bool = True) -> list:
     If store=True, append to nodes store for later retrieval via GET /nodes.
     """
     try:
+
         payloads = await fetch_all_predictions()
         if store:
             for p in payloads:

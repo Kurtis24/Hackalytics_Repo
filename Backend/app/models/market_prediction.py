@@ -13,6 +13,7 @@ class MarketPrediction(BaseModel):
 
 class GamePredictionResponse(BaseModel):
     game_id: str
+    category: str          # basketball | baseball | hockey | american_football
     home_team: str
     away_team: str
     start_time: str        # ISO 8601

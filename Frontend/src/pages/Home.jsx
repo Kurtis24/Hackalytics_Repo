@@ -151,7 +151,7 @@ function AnalyzeMarketCard() {
 }
 
 // LLM Model card content
-function LLMModelCard() {
+function LLMModelCard({ onViewClick }) {
   const lightBg = 'linear-gradient(180deg,rgb(223, 237, 253) 0%, #dbeafe 100%)'
   return (
     <div style={{
@@ -245,7 +245,7 @@ function LLMModelCard() {
           alignItems: 'center',
           justifyContent: 'flex-start',
         }}>
-          <button className="btn-card" onClick={() => onNav('product')}>
+          <button className="btn-card" onClick={onViewClick}>
             View Model
           </button>
         </div>
@@ -281,7 +281,7 @@ function LLMModelCard() {
   )
 }
 
-const CARDS = [
+const CARDS = (onViewClick) => [
   {
     id: 'analyze', variant: 'dark',
     title: 'Analyze Market',
@@ -296,13 +296,14 @@ const CARDS = [
     body:  'Train AI to detect these and predict them for future out comes',
     visual: null,
     btn: 'View Model',
-    customContent: <LLMModelCard />,
+    customContent: <LLMModelCard onViewClick={onViewClick} />,
   },
 ]
 
 export default function Home({ onNav }) {
   const [showViewMore, setShowViewMore] = useState(true)
   const [viewMoreFading, setViewMoreFading] = useState(false)
+  const [showLLMModal, setShowLLMModal] = useState(false)
   const scrollRef = useRef(null)
   const fadeTimeoutRef = useRef(null)
 
@@ -539,7 +540,7 @@ export default function Home({ onNav }) {
               paddingLeft: 280, paddingRight: 48,
               paddingTop: 8, paddingBottom: 16, width: '100%',
             }}>
-            {CARDS.map(card => (
+            {CARDS(() => setShowLLMModal(true)).map(card => (
               <div
                 key={card.id}
                 className={`how-card how-card-${card.variant}`}
@@ -666,6 +667,73 @@ export default function Home({ onNav }) {
           `,
         }}></div>
       </section>
+
+      {/* LLM Model Architecture Modal */}
+      {showLLMModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.9)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '40px',
+          }}
+          onClick={() => setShowLLMModal(false)}
+        >
+          <div
+            style={{
+              position: 'relative',
+              maxWidth: '90%',
+              maxHeight: '90%',
+              background: '#0a0e1a',
+              borderRadius: '20px',
+              padding: '40px',
+              border: '2px solid rgba(59, 130, 246, 0.3)',
+              boxShadow: '0 0 50px rgba(59, 130, 246, 0.2)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              onClick={() => setShowLLMModal(false)}
+              style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                background: 'none',
+                border: 'none',
+                color: '#fff',
+                fontSize: '2rem',
+                cursor: 'pointer',
+                opacity: 0.7,
+                transition: 'opacity 0.2s',
+              }}
+              onMouseEnter={(e) => e.target.style.opacity = 1}
+              onMouseLeave={(e) => e.target.style.opacity = 0.7}
+            >
+              ×
+            </button>
+
+            {/* LLM Architecture Diagram */}
+            <img
+              src="/llm-architecture.png"
+              alt="LLM Model Architecture"
+              style={{
+                width: '100%',
+                height: 'auto',
+                maxHeight: '80vh',
+                objectFit: 'contain',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
     </main>
   )

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Analytics } from '@vercel/analytics/react'
 import { DataProvider } from './context/DataContext'
 import Navbar from './components/Navbar'
 import Home from './pages/Home'
@@ -28,6 +29,7 @@ export default function App() {
       {page === 'home' && <Home onNav={handleNav} />}
       {page === 'product' && showExecute && <Execute onNav={handleExecuteNav} />}
       {page === 'product' && !showExecute && <NodeView />}
+      <Analytics />
     </DataProvider>
   )
 }

@@ -5,6 +5,7 @@
 **Frontend:**
 ```bash
 source ~/.nvm/nvm.sh && nvm use 20
+npm i
 npm run dev
 ```
 
@@ -12,6 +13,7 @@ npm run dev
 ```bash
 cd Backend
 source venv/bin/activate   # or: .\venv\Scripts\activate on Windows
+pip install -r requirements.txt
 python main.py
 ```
 

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException
 
 from app.models.node import Node
+from app.services.supabase_service import supabase_service
 
 router = APIRouter(prefix="/nodes", tags=["Nodes"])
 
@@ -12,8 +13,40 @@ _nodes_store: list[dict] = []
 
 @router.get("", response_model=list[Node])
 def list_nodes() -> list[Node]:
-    """Return all nodes currently in the store."""
-    return [Node.model_validate(n) for n in _nodes_store]
+    """Return all nodes from Supabase arbitrage_executions table."""
+    db_records = supabase_service.get_arbitrage_executions()
+
+    # Transform Supabase records to Node format
+    nodes = []
+    for record in db_records:
+        # Build sportsbooks array from the flat structure
+        sportsbooks = []
+        if record.get("bookmaker_1") and record.get("odds_1"):
+            sportsbooks.append({
+                "name": record["bookmaker_1"],
+                "odds": record["odds_1"]
+            })
+        if record.get("bookmaker_2") and record.get("odds_2"):
+            sportsbooks.append({
+                "name": record["bookmaker_2"],
+                "odds": record["odds_2"]
+            })
+
+        node_data = {
+            "category": record.get("category", ""),
+            "home_team": record.get("home_team", ""),
+            "away_team": record.get("away_team", ""),
+            "profit_score": record.get("profit_score", 0.0),
+            "risk_score": record.get("risk_score", 0.0),
+            "confidence": record.get("confidence", 0.0),
+            "volume": record.get("volume", 0),
+            "date": record.get("game_date", ""),
+            "market_type": record.get("market_type", ""),
+            "sportsbooks": sportsbooks
+        }
+        nodes.append(Node.model_validate(node_data))
+
+    return nodes
 
 
 @router.post("/bulk", response_model=dict)

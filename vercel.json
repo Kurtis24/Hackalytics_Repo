@@ -21,8 +21,19 @@
       "handle": "filesystem"
     },
     {
+      "src": "/api/(.*)",
+      "dest": "/api/$1"
+    },
+    {
       "src": "/(.*)",
       "dest": "/index.html"
+    }
+  ],
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/v1/arbitrage/execute",
+      "schedule": "0 0 1 * *"
     }
   ]
 }

@@ -1,30 +1,36 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { fetchNodes } from '../api/nodeApi';
+import { fetchArbitrageExecutions, transformSupabaseRecordsToNodes } from '../lib/supabase';
 import { adaptMlNodes } from '../utils/dataAdapter';
 
 export default function ExecuteButton() {
   const { updateArbitrageData, setLoadingState, setErrorState, dataMode, resetToMock } = useData();
   const [localLoading, setLocalLoading] = useState(false);
 
-  /** Refresh from Database: fetch latest nodes from Supabase (populated by CRON). */
+  /** Refresh from Database: fetch latest nodes directly from Supabase (populated by CRON). */
   async function handleRefresh() {
     setLocalLoading(true);
     setLoadingState(true);
     setErrorState(null);
     try {
-      console.log('[ExecuteButton] API URL:', import.meta.env.VITE_API_URL || 'http://localhost:9000/api/v1');
-      console.log('[ExecuteButton] Refreshing nodes from database...');
+      console.log('[ExecuteButton] Refreshing directly from Supabase...');
+      console.log('[ExecuteButton] Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
 
-      const nodes = await fetchNodes();
-      console.log('[ExecuteButton] Received nodes:', nodes?.length || 0);
+      // Fetch directly from Supabase
+      const records = await fetchArbitrageExecutions();
+      console.log('[ExecuteButton] Received records from Supabase:', records?.length || 0);
 
-      if (!nodes || nodes.length === 0) {
-        console.warn('[ExecuteButton] No nodes in database');
+      if (!records || records.length === 0) {
+        console.warn('[ExecuteButton] No records in database');
         setErrorState('No data available. CRON job may not have run yet.');
         return;
       }
 
+      // Transform Supabase records to Node format
+      const nodes = transformSupabaseRecordsToNodes(records);
+      console.log('[ExecuteButton] Transformed to nodes:', nodes?.length || 0);
+
+      // Adapt for frontend display
       const frontendNodes = adaptMlNodes(nodes);
       console.log('[ExecuteButton] Adapted nodes:', frontendNodes?.length || 0);
 

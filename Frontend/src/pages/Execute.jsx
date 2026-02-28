@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { fetchNodes } from '../api/nodeApi';
+import { fetchArbitrageExecutions, transformSupabaseRecordsToNodes } from '../lib/supabase';
 import { adaptMlNodes } from '../utils/dataAdapter';
 
 const PF = { fontFamily: "'Playfair Display', Georgia, serif" };
@@ -10,21 +10,21 @@ export default function Execute({ onNav }) {
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState(null);
 
-  /** Load from Database: fetch nodes from Supabase (populated by CRON job) and navigate to product view. */
+  /** Load from Database: fetch nodes directly from Supabase (populated by CRON job) and navigate to product view. */
   async function handleLoadFromDatabase() {
     setLocalLoading(true);
     setLoadingState(true);
     setLocalError(null);
     setErrorState(null);
     try {
-      console.log('[Execute] API URL:', import.meta.env.VITE_API_URL || 'http://localhost:9000/api/v1');
-      console.log('[Execute] Fetching nodes from database...');
+      console.log('[Execute] Fetching directly from Supabase database...');
+      console.log('[Execute] Supabase URL:', import.meta.env.VITE_SUPABASE_URL);
 
-      const nodes = await fetchNodes();
-      console.log('[Execute] Received nodes from database:', nodes);
-      console.log('[Execute] Total nodes received:', nodes?.length || 0);
+      // Fetch directly from Supabase
+      const records = await fetchArbitrageExecutions();
+      console.log('[Execute] Received records from Supabase:', records?.length || 0);
 
-      if (!nodes || nodes.length === 0) {
+      if (!records || records.length === 0) {
         const errorMsg = 'No nodes found in database. The CRON job may not have run yet, or the database is empty.';
         console.warn('[Execute]', errorMsg);
         setLocalError(errorMsg);
@@ -32,9 +32,13 @@ export default function Execute({ onNav }) {
         return;
       }
 
+      // Transform Supabase records to Node format
+      const nodes = transformSupabaseRecordsToNodes(records);
+      console.log('[Execute] Transformed to nodes:', nodes?.length || 0);
+
+      // Adapt for frontend display
       const frontendNodes = adaptMlNodes(nodes);
-      console.log('[Execute] Adapted nodes for frontend:', frontendNodes);
-      console.log('[Execute] Total adapted nodes:', frontendNodes?.length || 0);
+      console.log('[Execute] Adapted nodes for frontend:', frontendNodes?.length || 0);
 
       if (!frontendNodes || frontendNodes.length === 0) {
         const errorMsg = 'Failed to adapt nodes for frontend display.';

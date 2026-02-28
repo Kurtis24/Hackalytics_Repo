@@ -91,12 +91,16 @@ def _market_to_node(market: dict, game: dict) -> dict:
 async def execute_pipeline() -> list[dict]:
     """
     Full Execute Backend pipeline:
-      1. Fetch games + odds → run local ML model (waits for completion)
-      2. Score every market and return ALL as nodes (no profit-floor filtering)
-      3. Store all nodes in Supabase
-      4. Return a flat list of node dicts for the frontend to graph
+      1. Clear existing arbitrage_executions table
+      2. Fetch games + odds → run local ML model (waits for completion)
+      3. Score every market and return ALL as nodes (no profit-floor filtering)
+      4. Store all nodes in Supabase
+      5. Return a flat list of node dicts for the frontend to graph
     """
     try:
+        # Clear existing data in arbitrage_executions table
+        supabase_service.clear_arbitrage_executions()
+
         prediction_payloads = await fetch_all_predictions()
 
         all_nodes: list[dict] = []

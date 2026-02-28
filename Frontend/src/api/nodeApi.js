@@ -54,7 +54,9 @@ export async function runMlPipeline() {
 // ---------------------------------------------------------------------------
 
 /**
- * Fetch all nodes from the backend (includes any stored from ML pipeline or bulk upload).
+ * Fetch all nodes from the Supabase database via the backend.
+ * This retrieves nodes from the arbitrage_executions table that were stored
+ * during the last ML pipeline execution (either manual or via CRON).
  */
 export async function fetchNodes() {
   try {

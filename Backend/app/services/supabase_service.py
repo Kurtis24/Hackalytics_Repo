@@ -104,6 +104,63 @@ class SupabaseService:
             print(f"Error storing arbitrage executions in bulk: {e}")
             return []
 
+    def clear_arbitrage_executions(self) -> bool:
+        """
+        Delete all records from the arbitrage_executions table.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.client:
+            return False
+
+        try:
+            # Delete all records from the table using neq filter (not equal to empty string)
+            # This effectively selects all rows since all IDs exist
+            self.client.table("arbitrage_executions").delete().neq("id", "").execute()
+            return True
+        except Exception as e:
+            print(f"Error clearing arbitrage executions: {e}")
+            return False
+
+    def get_arbitrage_executions(self, limit: int = 1000) -> list[dict]:
+        """
+        Retrieve arbitrage execution records from Supabase.
+
+        Args:
+            limit: Maximum number of records to retrieve (default 1000)
+
+        Returns:
+            List of arbitrage execution records as dicts
+        """
+        if not self.client:
+            return []
+
+        try:
+            response = self.client.table("arbitrage_executions").select("*").limit(limit).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error fetching arbitrage executions: {e}")
+            return []
+
+    def list_tables(self) -> list[str]:
+        """
+        List all tables in the Supabase database.
+
+        Returns:
+            List of table names
+        """
+        if not self.client:
+            return []
+
+        try:
+            # Query the information_schema to get all tables
+            response = self.client.rpc("pg_get_tabledef", {"table_name": "arbitrage_executions"}).execute()
+            return response.data if response.data else []
+        except Exception as e:
+            print(f"Error listing tables: {e}")
+            return []
+
 
 # Singleton instance
 supabase_service = SupabaseService()

@@ -1,37 +1,15 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { runMlPipeline, fetchNodes } from '../api/nodeApi';
+import { fetchNodes } from '../api/nodeApi';
 import { adaptMlNodes } from '../utils/dataAdapter';
 
 export default function ExecuteButton() {
   const { updateArbitrageData, setLoadingState, setErrorState, dataMode, resetToMock } = useData();
   const [localLoading, setLocalLoading] = useState(false);
-  const [loadingAction, setLoadingAction] = useState(null); // 'execute' | 'ml'
 
-  /** Execute Backend: run ML pipeline, store nodes on backend, show in app. */
-  async function handleExecute() {
+  /** Refresh from Database: fetch latest nodes from Supabase (populated by CRON). */
+  async function handleRefresh() {
     setLocalLoading(true);
-    setLoadingAction('execute');
-    setLoadingState(true);
-    setErrorState(null);
-    updateArbitrageData([]);
-    try {
-      const nodes = await runMlPipeline();
-      const frontendNodes = adaptMlNodes(nodes);
-      updateArbitrageData(frontendNodes);
-    } catch (err) {
-      setErrorState(err.message);
-    } finally {
-      setLocalLoading(false);
-      setLoadingAction(null);
-      setLoadingState(false);
-    }
-  }
-
-  /** Load from ML: fetch nodes stored by Execute Backend (GET /nodes) and show in app. */
-  async function handleLoadFromMl() {
-    setLocalLoading(true);
-    setLoadingAction('ml');
     setLoadingState(true);
     setErrorState(null);
     try {
@@ -42,7 +20,6 @@ export default function ExecuteButton() {
       setErrorState(err.message);
     } finally {
       setLocalLoading(false);
-      setLoadingAction(null);
       setLoadingState(false);
     }
   }
@@ -65,26 +42,7 @@ export default function ExecuteButton() {
       alignItems: 'center',
     }}>
       <button
-        onClick={handleExecute}
-        disabled={localLoading}
-        style={{
-          background: localLoading ? 'rgba(57,255,20,0.10)' : 'rgba(57,255,20,0.20)',
-          border: '1px solid rgba(57,255,20,0.50)',
-          borderRadius: 8,
-          color: '#39ff14',
-          fontSize: 13,
-          fontFamily: 'monospace',
-          fontWeight: 'bold',
-          padding: '12px 24px',
-          cursor: localLoading ? 'not-allowed' : 'pointer',
-          opacity: localLoading ? 0.6 : 1,
-          transition: 'all 0.2s',
-        }}
-      >
-        {localLoading && loadingAction === 'execute' ? 'Loading...' : 'Execute Backend'}
-      </button>
-      <button
-        onClick={handleLoadFromMl}
+        onClick={handleRefresh}
         disabled={localLoading}
         style={{
           background: localLoading ? 'rgba(100,149,237,0.10)' : 'rgba(100,149,237,0.20)',
@@ -100,9 +58,9 @@ export default function ExecuteButton() {
           transition: 'all 0.2s',
         }}
       >
-        {localLoading && loadingAction === 'ml' ? 'Running ML...' : 'Load from ML'}
+        {localLoading ? 'Loading...' : 'Refresh Data'}
       </button>
-      
+
       {dataMode === 'live' && (
         <button
           onClick={handleToggleMode}
@@ -120,7 +78,7 @@ export default function ExecuteButton() {
           Use Mock Data
         </button>
       )}
-      
+
       <div style={{
         fontSize: 10,
         fontFamily: 'monospace',

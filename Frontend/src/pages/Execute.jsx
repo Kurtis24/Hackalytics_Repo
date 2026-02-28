@@ -1,60 +1,30 @@
 import { useState } from 'react';
 import { useData } from '../context/DataContext';
-import { runMlPipeline, fetchNodes } from '../api/nodeApi';
+import { fetchNodes } from '../api/nodeApi';
 import { adaptMlNodes } from '../utils/dataAdapter';
-import MLLoadingOverlay from '../components/MLLoadingOverlay';
 
 const PF = { fontFamily: "'Playfair Display', Georgia, serif" };
 
 export default function Execute({ onNav }) {
-  const { updateArbitrageData, setLoadingState, setErrorState, resetToMock } = useData();
+  const { updateArbitrageData, setLoadingState, setErrorState } = useData();
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState(null);
-  const [loadingAction, setLoadingAction] = useState(null); // 'execute' | 'ml'
 
-  /** Execute Backend: run ML pipeline (150 games → Databricks), store nodes on backend, show in app, then navigate. */
-  async function handleExecute() {
+  /** Load from Database: fetch nodes from Supabase (populated by CRON job) and navigate to product view. */
+  async function handleLoadFromDatabase() {
     setLocalLoading(true);
-    setLoadingAction('execute');
     setLoadingState(true);
     setLocalError(null);
     setErrorState(null);
-    updateArbitrageData([]);
     try {
-      console.log('[Execute] Calling runMlPipeline...');
-      const nodes = await runMlPipeline(true);
-      console.log('[Execute] Received nodes from backend:', nodes);
+      console.log('[Execute] Fetching nodes from database...');
+      const nodes = await fetchNodes();
+      console.log('[Execute] Received nodes from database:', nodes);
       console.log('[Execute] Total nodes received:', nodes?.length || 0);
-
-      // Log first 3 nodes to see their actual data
-      if (nodes && nodes.length > 0) {
-        console.log('[Execute] Sample node data (first 3):');
-        nodes.slice(0, 3).forEach((node, i) => {
-          console.log(`  Node ${i}:`, {
-            category: node.category,
-            home_team: node.home_team,
-            away_team: node.away_team,
-            profit_score: node.profit_score,
-            risk_score: node.risk_score,
-            confidence: node.confidence,
-            volume: node.volume,
-            date: node.date,
-            market_type: node.market_type,
-          });
-        });
-      }
 
       const frontendNodes = adaptMlNodes(nodes);
       console.log('[Execute] Adapted nodes for frontend:', frontendNodes);
       console.log('[Execute] Total adapted nodes:', frontendNodes?.length || 0);
-
-      // Log first 3 adapted nodes
-      if (frontendNodes && frontendNodes.length > 0) {
-        console.log('[Execute] Sample adapted nodes (first 3):');
-        frontendNodes.slice(0, 3).forEach((node, i) => {
-          console.log(`  Adapted node ${i}:`, node);
-        });
-      }
 
       updateArbitrageData(frontendNodes);
       setTimeout(() => onNav('product'), 500);
@@ -64,37 +34,8 @@ export default function Execute({ onNav }) {
       setErrorState(err.message);
     } finally {
       setLocalLoading(false);
-      setLoadingAction(null);
       setLoadingState(false);
     }
-  }
-
-  /** Load from ML: fetch nodes stored by Execute Backend (GET /nodes) and show in app; then go to product. */
-  async function handleLoadFromMl() {
-    setLocalLoading(true);
-    setLoadingAction('ml');
-    setLoadingState(true);
-    setLocalError(null);
-    setErrorState(null);
-    try {
-      const nodes = await fetchNodes();
-      const frontendNodes = adaptMlNodes(nodes);
-      updateArbitrageData(frontendNodes);
-      setTimeout(() => onNav('product'), 500);
-    } catch (err) {
-      setLocalError(err.message);
-      setErrorState(err.message);
-    } finally {
-      setLocalLoading(false);
-      setLoadingAction(null);
-      setLoadingState(false);
-    }
-  }
-
-  /** Use Mock Data: switch to built-in mock nodes (no backend), then go to product. */
-  function handleUseMock() {
-    resetToMock();
-    onNav('product');
   }
 
   return (
@@ -110,9 +51,6 @@ export default function Execute({ onNav }) {
       position: 'relative',
       padding: '80px 24px',
     }}>
-      {/* Full-screen ML loading overlay when Execute Backend is running the pipeline */}
-      {localLoading && loadingAction === 'execute' && <MLLoadingOverlay />}
-
       {/* T-shaped connector at top */}
       <div style={{
         display: 'flex',
@@ -152,10 +90,19 @@ export default function Execute({ onNav }) {
           lineHeight: 1.15,
           letterSpacing: '0.01em',
           color: '#fff',
-          marginBottom: '48px',
+          marginBottom: '24px',
         }}>
           Arbitrage Discovery
         </h1>
+
+        <p style={{
+          color: 'rgba(255,255,255,0.7)',
+          fontSize: '1rem',
+          marginBottom: '48px',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        }}>
+          View arbitrage opportunities automatically updated monthly by CRON
+        </p>
 
         {localError && (
           <div style={{
@@ -173,7 +120,7 @@ export default function Execute({ onNav }) {
         )}
 
         <button
-          onClick={handleExecute}
+          onClick={handleLoadFromDatabase}
           disabled={localLoading}
           className="btn-outline"
           style={{
@@ -184,7 +131,7 @@ export default function Execute({ onNav }) {
             opacity: localLoading ? 0.6 : 1,
           }}
         >
-          {localLoading && loadingAction === 'execute' ? 'Running...' : 'Start Now'}
+          {localLoading ? 'Loading...' : 'View Opportunities'}
         </button>
       </div>
 

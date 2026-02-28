@@ -17,21 +17,40 @@ export default function Execute({ onNav }) {
     setLocalError(null);
     setErrorState(null);
     try {
+      console.log('[Execute] API URL:', import.meta.env.VITE_API_URL || 'http://localhost:9000/api/v1');
       console.log('[Execute] Fetching nodes from database...');
+
       const nodes = await fetchNodes();
       console.log('[Execute] Received nodes from database:', nodes);
       console.log('[Execute] Total nodes received:', nodes?.length || 0);
+
+      if (!nodes || nodes.length === 0) {
+        const errorMsg = 'No nodes found in database. The CRON job may not have run yet, or the database is empty.';
+        console.warn('[Execute]', errorMsg);
+        setLocalError(errorMsg);
+        setErrorState(errorMsg);
+        return;
+      }
 
       const frontendNodes = adaptMlNodes(nodes);
       console.log('[Execute] Adapted nodes for frontend:', frontendNodes);
       console.log('[Execute] Total adapted nodes:', frontendNodes?.length || 0);
 
+      if (!frontendNodes || frontendNodes.length === 0) {
+        const errorMsg = 'Failed to adapt nodes for frontend display.';
+        console.error('[Execute]', errorMsg);
+        setLocalError(errorMsg);
+        setErrorState(errorMsg);
+        return;
+      }
+
       updateArbitrageData(frontendNodes);
       setTimeout(() => onNav('product'), 500);
     } catch (err) {
       console.error('[Execute] Error:', err);
-      setLocalError(err.message);
-      setErrorState(err.message);
+      const errorMsg = err.message || 'Failed to load data from database';
+      setLocalError(errorMsg);
+      setErrorState(errorMsg);
     } finally {
       setLocalLoading(false);
       setLoadingState(false);

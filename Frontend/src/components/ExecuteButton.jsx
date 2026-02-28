@@ -13,11 +13,25 @@ export default function ExecuteButton() {
     setLoadingState(true);
     setErrorState(null);
     try {
+      console.log('[ExecuteButton] API URL:', import.meta.env.VITE_API_URL || 'http://localhost:9000/api/v1');
+      console.log('[ExecuteButton] Refreshing nodes from database...');
+
       const nodes = await fetchNodes();
+      console.log('[ExecuteButton] Received nodes:', nodes?.length || 0);
+
+      if (!nodes || nodes.length === 0) {
+        console.warn('[ExecuteButton] No nodes in database');
+        setErrorState('No data available. CRON job may not have run yet.');
+        return;
+      }
+
       const frontendNodes = adaptMlNodes(nodes);
+      console.log('[ExecuteButton] Adapted nodes:', frontendNodes?.length || 0);
+
       updateArbitrageData(frontendNodes);
     } catch (err) {
-      setErrorState(err.message);
+      console.error('[ExecuteButton] Error:', err);
+      setErrorState(err.message || 'Failed to refresh data');
     } finally {
       setLocalLoading(false);
       setLoadingState(false);

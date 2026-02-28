@@ -41,3 +41,7 @@ dist-ssr
 
 # Vercel
 .vercel
+
+# Root only (Frontend has its own package.json for the build)
+/package.json
+/package-lock.json

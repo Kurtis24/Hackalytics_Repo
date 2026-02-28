@@ -5,6 +5,7 @@ from app.models.arbitrage import ArbitrageOpportunity, PortfolioAnalysis, Predic
 from app.services.ml_service import fetch_prediction, fetch_all_predictions
 from app.services.arbitrage_service import process_prediction, implied_prob, to_decimal
 from app.services.analysis_service import analyze
+from app.services.supabase_service import supabase_service
 from app.config import settings
 
 router = APIRouter(prefix="/arbitrage", tags=["Arbitrage"])
@@ -92,7 +93,8 @@ async def execute_pipeline() -> list[dict]:
     Full Execute Backend pipeline:
       1. Fetch games + odds → run local ML model (waits for completion)
       2. Score every market and return ALL as nodes (no profit-floor filtering)
-      3. Return a flat list of node dicts for the frontend to graph
+      3. Store all nodes in Supabase
+      4. Return a flat list of node dicts for the frontend to graph
     """
     try:
         prediction_payloads = await fetch_all_predictions()
@@ -110,6 +112,10 @@ async def execute_pipeline() -> list[dict]:
                     all_nodes.append(_market_to_node(market, game_ctx))
                 except Exception:
                     continue
+
+        # Store all nodes in Supabase (bulk insert)
+        if all_nodes:
+            supabase_service.store_arbitrage_executions_bulk(all_nodes)
 
         return all_nodes
     except Exception as exc:

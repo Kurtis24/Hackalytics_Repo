@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     # Data output
     data_output_dir: str = "data/raw"
 
+    # Supabase configuration
+    supabase_url: str = ""
+    supabase_key: str = ""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

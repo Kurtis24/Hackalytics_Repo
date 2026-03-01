@@ -425,7 +425,7 @@ export default function Home({ onNav }) {
           position: 'relative',
           zIndex: 5,
         }}>
-          AI that finds arbitrage<br />and invests
+          AI that finds arbitrage<br />
         </h1>
 
         {/* CTA */}
@@ -601,8 +601,9 @@ export default function Home({ onNav }) {
       {/* ─── JOIN CTA ──────────────────────────────────────────── */}
       <section style={{
         position: 'relative',
+        minHeight: '100vh',
         padding: '80px 24px 160px',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 36,
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 36,
         overflow: 'hidden', background: '#000',
       }}>
         {/* T-shaped connector (flipped) */}

@@ -33,7 +33,7 @@
   "crons": [
     {
       "path": "/api/v1/arbitrage/execute",
-      "schedule": "0 0 1 * *"
+      "schedule": "0 4 * * 6"
     }
   ]
 }

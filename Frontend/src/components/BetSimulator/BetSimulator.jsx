@@ -252,7 +252,7 @@ export default function BetSimulator({ selectedNode }) {
         color: '#e8e8f0',
         fontSize: '14px',
       }}>
-        Warning: Just because their is more profit, the market could correct more
+        Estimates are mathematical projections based on available market data. Markets move rapidly. Profit is not guaranteed. Users assume all risk.
       </div>
 
       {/* Slider Custom Styling */}

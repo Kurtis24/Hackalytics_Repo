@@ -7,7 +7,6 @@ from fastapi import APIRouter, HTTPException
 
 from app.services.ml_service import fetch_all_predictions
 from app.routers.nodes import _nodes_store
-import pdb
 
 router = APIRouter(prefix="/ml", tags=["ML Pipeline"])
 

@@ -1,4 +1,4 @@
-"""Node model for ML pipeline output (Databricks) and bulk node storage."""
+"""Node model for local ML pipeline output and bulk node storage."""
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -9,7 +9,7 @@ class SportsbookEntry(BaseModel):
 
 
 class Node(BaseModel):
-    """Single node (arbitrage opportunity) from ML / Databricks output."""
+    """Single node (arbitrage opportunity) from the local ML pipeline output."""
 
     category: str
     home_team: str

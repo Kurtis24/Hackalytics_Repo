@@ -1,7 +1,7 @@
 """
 Game prediction orchestration service.
 
-Pulls games + odds from Delta Lake, groups by market type, picks the
+Pulls games + locally generated odds, groups by market type, picks the
 best bookmaker pair, runs model inference, and assembles the response.
 """
 
@@ -19,7 +19,7 @@ from app.models.market_prediction import (
     GamePredictionResponse,
     MarketPrediction,
 )
-from app.services.delta_lake_service import (
+from app.services.data_service import (
     fetch_odds_for_game,
     fetch_odds_for_games,
     fetch_upcoming_games,

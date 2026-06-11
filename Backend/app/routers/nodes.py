@@ -1,4 +1,4 @@
-"""Nodes API: bulk accept and list nodes (outputs from Databricks ML)."""
+"""Nodes API: bulk accept and list nodes (outputs from the local ML pipeline)."""
 
 from fastapi import APIRouter, HTTPException
 
@@ -52,7 +52,7 @@ def list_nodes() -> list[Node]:
 @router.post("/bulk", response_model=dict)
 def bulk_create_nodes(nodes: list[Node]) -> dict:
     """
-    Accept bulk nodes at a time (e.g. outputs from Databricks ML API).
+    Accept bulk nodes at a time (e.g. outputs from the local ML pipeline).
     Appends to the in-memory store and returns count accepted.
     """
     for node in nodes:

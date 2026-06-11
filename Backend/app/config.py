@@ -62,26 +62,26 @@ class Settings(BaseSettings):
     # Outcome source filtering
     outcome_sources: list[str] = ["DRAFT_KINGS", "ESPN_BET", "FAN_DUEL"]
 
-    # Databricks Model Serving (OAuth M2M)
-    databricks_host: str = "https://dbc-249c9c95-e52b.cloud.databricks.com"
-    databricks_client_id: str = ""
-    databricks_client_secret: str = ""
-    databricks_serving_endpoint: str = "discover_arbitrage"
-    databricks_warehouse_id: str = ""
+    # ------------------------------------------------------------------
+    # Prediction markets (Polymarket + Kalshi) — both public, no API key
+    # ------------------------------------------------------------------
+    polymarket_gamma_url: str = "https://gamma-api.polymarket.com"
+    kalshi_api_url: str = "https://external-api.kalshi.com/trade-api/v2"
 
-    # Delta Lake table references
-    delta_games_table: str = "workspace.default.upcoming_games"
-    delta_odds_table: str = "workspace.default.game_odds"
+    # Max markets to pull from each venue when scanning for arbitrage
+    prediction_market_limit: int = 500
 
-    # Local model checkpoint (used when Databricks endpoint is unavailable)
+    # Minimum guaranteed margin (as a fraction, e.g. 0.01 = 1%) for an
+    # arbitrage opportunity to be reported. Set to 0 to see every edge.
+    prediction_arb_min_margin: float = 0.0
+
+    # Title-similarity threshold (0-1) for matching a Polymarket market to a
+    # Kalshi market when looking for cross-venue arbitrage.
+    prediction_match_threshold: float = 0.60
+
+    # Local model checkpoint — the trained TemporalArbitrageScorer weights.
+    # Path is relative to the Backend/ directory.
     model_checkpoint_path: str = "models/model.ckpt"
-
-    # Model execution mode: "local" | "remote" | "auto"
-    #   local  — local checkpoint inference only
-    #   remote — Databricks serving endpoint only (fails if unreachable)
-    #   auto   — try remote, fall back to local on error
-    model_execution_mode: str = "local"
-
 
     # Data output
     data_output_dir: str = "data/raw"
@@ -109,5 +109,3 @@ class Settings(BaseSettings):
 
 settings = Settings()
 settings.validate_risk_weights()
-
-print(settings)

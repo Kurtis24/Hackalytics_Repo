@@ -3,7 +3,7 @@ ML Model Service — local inference via the trained checkpoint.
 
 Pipeline:
   1. Fetch games from sports APIs (get_games_for_ml)
-  2. For each game, fetch odds from Delta Lake / sample fallback
+  2. For each game, fetch locally generated odds
   3. Run the local TemporalArbitrageScorer model on each game × market pair
   4. Return PredictionInput-shaped dicts ready for the arbitrage pipeline
 """
@@ -113,7 +113,7 @@ def _fetch_all_predictions_sync() -> list[dict[str, Any]]:
 async def fetch_all_predictions() -> list[dict[str, Any]]:
     """
     Full ML pipeline:
-      1. Fetch upcoming games + odds (Delta Lake / sample fallback)
+      1. Fetch upcoming games + locally generated odds
       2. Run local model inference for each game × market type
       3. Return list of PredictionInput-compatible dicts
 

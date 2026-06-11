@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import health, games, arbitrage, nodes, ml
+from app.routers import health, games, arbitrage, nodes, ml, prediction_markets
 
 app = FastAPI(
     title=settings.app_name,
@@ -24,6 +24,7 @@ app.include_router(games.router,      prefix="/api/v1")
 app.include_router(arbitrage.router,  prefix="/api/v1")
 app.include_router(nodes.router,      prefix="/api/v1")
 app.include_router(ml.router,          prefix="/api/v1")
+app.include_router(prediction_markets.router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])

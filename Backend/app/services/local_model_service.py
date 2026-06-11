@@ -1,6 +1,6 @@
 """
 Local PyTorch model service — loads a trained checkpoint and runs
-inference directly, bypassing the Databricks serving endpoint.
+inference directly, natively on the host machine (CPU by default).
 """
 
 from __future__ import annotations

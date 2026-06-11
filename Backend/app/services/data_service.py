@@ -1,8 +1,10 @@
 """
-Delta Lake data-fetching service.
+Local data service.
 
-Pulls upcoming games and odds from Databricks Delta Lake tables via SQL.
-Falls back to fetching from sports APIs when Databricks is unavailable or not configured.
+Fetches upcoming games from public sports APIs (ESPN / MLB / NHL) and
+generates per-game odds locally. Everything runs natively in Python with
+no external data warehouse — if the sports APIs are unreachable, the
+service falls back to built-in sample data so the app always works offline.
 """
 
 from __future__ import annotations
@@ -16,32 +18,6 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-
-def _databricks_available() -> bool:
-    """Return True only if Databricks credentials AND warehouse ID are configured."""
-    return bool(
-        settings.databricks_client_id
-        and settings.databricks_client_secret
-        and settings.databricks_warehouse_id
-    )
-
-
-def _get_client():
-    """Lazy-init the Databricks client (only called when credentials exist)."""
-    from app.services.databricks_client import DatabricksServingClient
-
-    global _client
-    if _client is None:
-        _client = DatabricksServingClient(
-            host=settings.databricks_host,
-            client_id=settings.databricks_client_id,
-            client_secret=settings.databricks_client_secret,
-        )
-    return _client
-
-
-
-_client = None
 
 # ── Sample / fallback data ───────────────────────────────────────────
 
@@ -200,7 +176,7 @@ def _generate_varied_odds(game_id: str, seed_offset: int = 0) -> list[dict]:
 # ── Public API ────────────────────────────────────────────────────────
 
 def fetch_upcoming_games(category: Optional[str] = None, force_refresh: bool = False) -> list[dict]:
-    """Fetch upcoming games from Databricks or sports APIs."""
+    """Fetch upcoming games from public sports APIs (cached after first call)."""
     global _cached_games, _cached_odds
 
     # Allow forcing a cache refresh
@@ -209,21 +185,9 @@ def fetch_upcoming_games(category: Optional[str] = None, force_refresh: bool = F
         _cached_odds = None
         logger.info("Cache cleared - forcing fresh fetch")
 
-    if _databricks_available():
-        try:
-            where = ""
-            if category:
-                where = f" WHERE category = '{category}'"
-            sql = f"SELECT * FROM {settings.delta_games_table}{where} ORDER BY start_time"
-            rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
-            if rows:
-                return rows
-        except Exception:
-            logger.warning("Databricks unavailable — fetching from sports APIs")
-
-    # Fetch from sports APIs when Databricks is not configured
+    # Fetch from sports APIs
     if _cached_games is None:
-        target_games = 150  # Target number of games to fetch
+        target_games = settings.ml_target_nodes  # Target number of games to fetch
         logger.info("Fetching %d upcoming games from sports APIs", target_games)
         try:
             from app.services.games_service import get_all_upcoming_games
@@ -329,18 +293,6 @@ def fetch_odds_for_game(game_id: str) -> list[dict]:
     """Fetch all odds rows for a single game."""
     global _cached_odds
 
-    if _databricks_available():
-        try:
-            sql = (
-                f"SELECT * FROM {settings.delta_odds_table} "
-                f"WHERE game_id = '{game_id}'"
-            )
-            rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
-            if rows:
-                return rows
-        except Exception:
-            logger.warning("Databricks unavailable — using cached odds")
-
     # Use cached odds if available
     if _cached_odds is not None:
         return _cached_odds.get(game_id, [])
@@ -350,22 +302,6 @@ def fetch_odds_for_game(game_id: str) -> list[dict]:
 def fetch_odds_for_games(game_ids: list[str]) -> dict[str, list[dict]]:
     """Fetch odds for multiple games, keyed by game_id."""
     global _cached_odds
-
-    if _databricks_available():
-        try:
-            ids_str = ", ".join(f"'{gid}'" for gid in game_ids)
-            sql = (
-                f"SELECT * FROM {settings.delta_odds_table} "
-                f"WHERE game_id IN ({ids_str})"
-            )
-            rows = _get_client().execute_sql(sql, settings.databricks_warehouse_id)
-            if rows:
-                result: dict[str, list[dict]] = {}
-                for row in rows:
-                    result.setdefault(row["game_id"], []).append(row)
-                return result
-        except Exception:
-            logger.warning("Databricks unavailable — using cached odds")
 
     # Use cached odds if available
     if _cached_odds is not None:

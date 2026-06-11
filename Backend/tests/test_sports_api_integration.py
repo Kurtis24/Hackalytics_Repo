@@ -1,8 +1,8 @@
 """
-Test that the ML pipeline fetches games from sports APIs when Databricks is not configured.
+Test that the ML pipeline fetches games from sports APIs and runs natively.
 
 This test verifies:
-1. fetch_upcoming_games() fetches from sports APIs when Databricks is unavailable
+1. fetch_upcoming_games() fetches from sports APIs (sample fallback offline)
 2. Returns the expected number of games (ml_target_nodes)
 3. Games have proper categories (basketball, baseball, hockey, american_football)
 4. Each game has odds data so the ML model can process it
@@ -12,28 +12,23 @@ This test verifies:
 import pytest
 from unittest.mock import patch, MagicMock
 
-from app.services.delta_lake_service import (
+from app.services.data_service import (
     fetch_upcoming_games,
     fetch_odds_for_games,
-    _databricks_available,
 )
 from app.services.ml_service import fetch_all_predictions
 from app.config import settings
 
 
 class TestSportsAPIIntegration:
-    """Test sports API integration when Databricks is not available."""
-
-    def test_databricks_not_configured(self):
-        """Verify Databricks is not configured in test environment."""
-        assert not _databricks_available(), "Databricks should not be configured in tests"
+    """Test the native sports API + local odds data path."""
 
     def test_fetch_upcoming_games_from_sports_apis(self):
         """Test that fetch_upcoming_games fetches from sports APIs."""
         # Clear the cache to force a fresh fetch
-        import app.services.delta_lake_service as delta_service
-        delta_service._cached_games = None
-        delta_service._cached_odds = None
+        import app.services.data_service as data_service
+        data_service._cached_games = None
+        data_service._cached_odds = None
 
         games = fetch_upcoming_games()
 
@@ -46,7 +41,7 @@ class TestSportsAPIIntegration:
 
     def test_games_have_required_fields(self):
         """Test that fetched games have all required fields."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 
@@ -64,7 +59,7 @@ class TestSportsAPIIntegration:
 
     def test_games_have_multiple_categories(self):
         """Test that games include multiple sports categories."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 
@@ -78,7 +73,7 @@ class TestSportsAPIIntegration:
 
     def test_fetch_odds_for_games(self):
         """Test that odds are available for fetched games."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 
@@ -95,7 +90,7 @@ class TestSportsAPIIntegration:
 
     def test_odds_have_required_fields(self):
         """Test that odds have all required fields for ML processing."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 
@@ -118,7 +113,7 @@ class TestSportsAPIIntegration:
     @pytest.mark.asyncio
     async def test_ml_pipeline_processes_games(self):
         """Test that the ML pipeline can process games from sports APIs."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 
@@ -139,7 +134,7 @@ class TestSportsAPIIntegration:
 
     def test_category_filter(self):
         """Test filtering games by category."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 
@@ -163,7 +158,7 @@ class TestSportsAPIIntegration:
 
     def test_cache_persistence(self):
         """Test that games are cached and reused."""
-        import app.services.delta_lake_service as delta_service
+        import app.services.data_service as delta_service
         delta_service._cached_games = None
         delta_service._cached_odds = None
 

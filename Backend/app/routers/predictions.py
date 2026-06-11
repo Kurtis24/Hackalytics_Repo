@@ -41,8 +41,8 @@ async def get_all_predictions(
         None, description="Sport filter, e.g. 'basketball'"),
 ) -> AllGamesPredictionResponse:
     """
-    Fetch all upcoming games from Delta Lake, run arb detection model
-    on all 3 market types, and return predictions.
+    Fetch all upcoming games, run the arb detection model on all 3
+    market types, and return predictions.
     """
     try:
         return get_all_game_predictions(category)
@@ -53,8 +53,8 @@ async def get_all_predictions(
 @router.get("/games/{game_id}", response_model=GamePredictionResponse)
 async def get_game_prediction(game_id: str) -> GamePredictionResponse:
     """
-    Fetch a single game's odds from Delta Lake, run arb detection model
-    on all 3 market types, and return predictions.
+    Fetch a single game's odds, run the arb detection model on all 3
+    market types, and return predictions.
     """
     try:
         result = get_single_game_prediction(game_id)

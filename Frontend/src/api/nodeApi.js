@@ -2,7 +2,7 @@
 //
 // Usage from the front end:
 //   • Games: fetchAllGames(), fetchLiveGames() — GET /games/all, /games/live
-//   • ML:    runMlPipeline(store?) — POST /ml/run (games → Databricks → nodes; store=true appends to GET /nodes)
+//   • ML:    runMlPipeline(store?) — POST /ml/run (games → local model → nodes; store=true appends to GET /nodes)
 //   • Nodes: fetchNodes(), addNode(), addBulkNodes(nodes) — GET /nodes, POST /nodes, POST /nodes/bulk
 //   • Run ML and show in app: runMlPipeline(true) then adaptMlNodes(nodes) then updateArbitrageData(nodes) — see ExecuteButton / Execute page
 
@@ -94,7 +94,7 @@ export async function addNode(nodeData) {
 }
 
 /**
- * Accept bulk nodes at a time (e.g. outputs from Databricks / ML pipeline).
+ * Accept bulk nodes at a time (e.g. outputs from the local ML pipeline).
  * @param {Array<object>} nodes - Array of node objects (category, home_team, away_team, profit_score, risk_score, confidence, volume, date/Date, market_type, sportsbooks).
  * @returns {Promise<{ accepted: number, total: number }>}
  */

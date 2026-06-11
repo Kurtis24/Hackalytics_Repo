@@ -30,7 +30,7 @@ export function adaptBackendOpportunities(opportunities) {
 }
 
 /**
- * Normalize ML pipeline / Databricks node output to frontend node format.
+ * Normalize local ML pipeline node output to frontend node format.
  * ML returns: { category, home_team, away_team, profit_score, risk_score, confidence, volume, date, market_type, sportsbooks }
  */
 export function adaptMlNodes(nodes) {

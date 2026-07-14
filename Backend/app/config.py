@@ -25,8 +25,16 @@ class Settings(BaseSettings):
     min_confidence: float = 0.60
 
     bankroll: int = 100000             # Total capital pool (USD)
-    kelly_fraction: float = 0.25        # Quarter Kelly for stealth + resilience
+    kelly_fraction: float = 1.0         # Full Kelly — the risk model below does the damping
     bankroll_cap_pct: float = 0.10      # Max fraction of bankroll on any single market
+
+    # Execution-risk model for the Kelly stake.
+    # An arb only loses when the second leg fails to fill at the quoted price:
+    #   with prob (1 - leg_failure_prob) both legs fill  → gain = margin × volume
+    #   with prob leg_failure_prob the 2nd leg fails     → unwind leg 1 at the
+    #     moved line, losing ~leg_failure_loss × volume
+    leg_failure_prob: float = 0.05      # P(second leg doesn't fill at quoted odds)
+    leg_failure_loss: float = 0.02      # Fraction of volume lost unwinding a failed leg
 
     # Drop market if guaranteed_profit < this (USD)
     min_profit_floor: int = 5

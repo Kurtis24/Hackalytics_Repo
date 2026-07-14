@@ -7,7 +7,7 @@ volume optimization algorithm, and returns structured ArbitrageOpportunity objec
 Volume algorithm (PRD v3 §3):
   Step 1 — Measure line movement (IP distance from open to current)
   Step 2 — Compute market ceiling (remaining depth before sportsbook detects position)
-  Step 3 — Compute Kelly stake (Quarter Kelly on true arb margin)
+  Step 3 — Compute Kelly stake (growth-optimal size under execution risk)
   Step 4 — final_volume = MIN(kelly, ceiling, bankroll_cap); drop if profit < floor
 """
 
@@ -86,19 +86,35 @@ def _market_ceiling(line_mov: float, market_type: str) -> int:
 
 def _kelly_stake(arb_margin: float, dec1: float, dec2: float) -> int:
     """
-    Step 3 — Quarter-Kelly stake for a two-sided arb.
+    Step 3 — Growth-optimal (Kelly) stake for a two-sided arb.
     Returns 0 if arb_margin <= 0 (no guaranteed edge).
 
-    binding_side = the book with lower decimal (more conservative denominator).
-    full_kelly = arb_margin / (binding_side − 1)
+    An arb's only risk is execution: with probability p the second leg fails
+    to fill at the quoted price and the first leg is unwound at the moved
+    line, losing ~λ of the deployed volume. Betting fraction f of bankroll,
+    the outcome is +f·m with prob (1−p) and −f·λ with prob p. Maximizing
+    E[log(1 + f·X)] gives:
+
+        f* = ((1−p)·m − p·λ) / (m·λ)
+
+    As execution risk → 0, f* → ∞ and the stake is bound only by the market
+    ceiling and bankroll cap (the max-EV behaviour for a guaranteed edge);
+    Kelly reduces the size only when failure risk actually warrants it.
     """
     if arb_margin <= 0:
         return 0
-    binding_side = min(dec1, dec2)
-    if (binding_side - 1) == 0:
-        return 0
-    full_kelly = arb_margin / (binding_side - 1)
-    return round(full_kelly * settings.kelly_fraction * settings.bankroll)
+
+    m = arb_margin
+    p = settings.leg_failure_prob
+    lam = settings.leg_failure_loss
+
+    ev_per_dollar = (1 - p) * m - p * lam
+    if ev_per_dollar <= 0:
+        return 0  # execution risk eats the edge — not worth betting
+
+    f_star = ev_per_dollar / (m * lam)
+    f_star = min(f_star, 1.0)  # no leverage: at most the whole bankroll
+    return round(f_star * settings.kelly_fraction * settings.bankroll)
 
 
 # ---------------------------------------------------------------------------

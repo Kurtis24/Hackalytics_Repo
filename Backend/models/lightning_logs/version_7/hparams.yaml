@@ -1,9 +1,0 @@
-cross_attn_start_layer: 1
-d_ff: 8
-d_model: 8
-dropout: 0.1
-learning_rate: 0.001
-n_heads: 4
-n_input_features: 10
-n_layers: 3
-weight_decay: 1.0e-05
